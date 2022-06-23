@@ -3,7 +3,6 @@ Binary program wrapper
 """
 
 from io import BytesIO
-from json import load
 from pathlib import Path
 from typing import Dict, Optional, Union, cast
 
