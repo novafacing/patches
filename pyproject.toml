@@ -6,6 +6,9 @@ authors = ["novafacing <rowanbhart@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 
+[tool.poetry.build]
+script = "build.py"
+
 [tool.poetry.dependencies]
 python = "^3.8"
 angr = "^9.2.7"

@@ -163,3 +163,7 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+poetry.lock
+setup.py
+patches/shellvm/libshellvm.so

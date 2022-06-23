@@ -37,6 +37,8 @@ class BinaryInfo:
             to load it from that path on disk. If it is `bytes`, we will
             first try to load it from the decoded path, and if there is
             no such path, we will try to load it as a binary blob.
+        :param cle_opts: If provided, will override the kwargs passed to
+            `cle.Loader`
         """
         if isinstance(binary, Path):
             self.path = binary
