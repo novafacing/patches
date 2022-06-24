@@ -11,6 +11,9 @@ def test_nop_patch_create() -> None:
     """
     addresses = [0x400000, 0x430000, 0x0]
     p = NopPatch(addresses)
-    assert len(p.address_ranges) == 3 and all(
-        map(lambda a: a in (*map(lambda ar: ar.address, p.address_ranges),), addresses)
-    )
+    assert len(p.address_ranges) == 3
+    for address_range in p.address_ranges:
+        assert (
+            address_range.start == address_range.end
+            and address_range.start in addresses
+        )

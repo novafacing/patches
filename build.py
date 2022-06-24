@@ -8,7 +8,7 @@ from subprocess import run
 from typing import Any
 
 SHELLVM_DIR = Path(__file__).with_name("third_party") / "shellvm"
-SHELLVM_OUTPUT_FILE = Path(__file__).with_name("patches") / "shellvm" / "libshellvm.so"
+SHELLVM_OUTPUT_FILE = Path(__file__).with_name("patches") / "shellvm" / "shellvm.so"
 
 
 def check_clang() -> None:
@@ -53,6 +53,8 @@ def build(_: Any) -> None:
     """
     Build the shellvm
     """
+
+    SHELLVM_OUTPUT_FILE.unlink(missing_ok=True)
 
     if not SHELLVM_DIR.is_dir():
         raise ValueError(

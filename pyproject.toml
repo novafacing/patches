@@ -58,7 +58,7 @@ max-parents = 7
 max-public-methods = 16
 max-statements = 64
 min-public-methods = 1
-good-names = ["e"]
+good-names = ["e", "cc"]
 
 [tool.pylint.exceptions]
 overgeneral-exceptions = "Exception"
