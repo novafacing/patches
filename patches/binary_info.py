@@ -5,10 +5,16 @@ Binary program wrapper
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Optional, Union, cast
+from logging import getLogger
 
 from lief import parse, Binary as LIEFBinary  # pylint: disable=no-name-in-module
 
+from cle.backends import Backend
 from cle.loader import Loader
+
+from patches.error import NoSectionError
+
+logger = getLogger(__name__)
 
 
 class BinaryInfo:
@@ -17,9 +23,9 @@ class BinaryInfo:
     """
 
     path: Optional[Path] = None
-    blob: Optional[BytesIO] = None
-    lief_binary: Optional[LIEFBinary] = None
-    cle_binary: Optional[Loader] = None
+    blob: BytesIO
+    lief_binary: LIEFBinary
+    cle_binary: Backend
     cle_opts: Dict[str, bool] = {
         "auto_load_libs": False,
         "use_system_libs": False,
@@ -66,10 +72,55 @@ class BinaryInfo:
             self.cle_binary = Loader(  # type: ignore
                 self.blob,
                 **self.cle_opts,
-            )
+            ).main_object
         else:
+            self.blob = BytesIO(self.path.read_bytes())
             self.lief_binary = parse(str(self.path))
             self.cle_binary = Loader(  # type: ignore
                 str(self.path),
                 **self.cle_opts,
+            ).main_object
+
+    def write(self, vaddr: int, data: bytes) -> None:
+        """
+        Write data to the binary at the given virtual address
+        """
+        try:
+            section = next(
+                filter(lambda s: s.contains_addr(vaddr), self.cle_binary.sections)
             )
+        except StopIteration as e:
+            logger.error(f"Could not find section for address {vaddr}")
+            raise NoSectionError(f"Could not find section for address {vaddr}") from e
+
+        self.blob.seek(section.addr_to_offset(vaddr))
+        self.blob.write(data)
+
+    def read(self, vaddr: int, size: int) -> bytes:
+        """
+        Read data from the binary at the given virtual address
+        """
+        try:
+            section = next(
+                filter(lambda s: s.contains_addr(vaddr), self.cle_binary.sections)
+            )
+        except StopIteration as e:
+            logger.error(f"Could not find section for address {vaddr}")
+            raise NoSectionError(f"Could not find section for address {vaddr}") from e
+
+        self.blob.seek(section.addr_to_offset(vaddr))
+        return self.blob.read(size)
+
+    def asm(self, asm: str, vaddr: int) -> bytes:
+        """
+        Assemble the given assembly code at the given virtual address
+        """
+        return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)
+
+    def add_space(
+        self, size: int, readable: bool, writable: bool, executable: bool
+    ) -> int:
+        """
+        Add space to the binary and return the virtual address where it was added
+        """
+        raise NotImplemented("add_space is not implemented")

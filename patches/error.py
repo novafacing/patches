@@ -26,3 +26,9 @@ class BinaryCreateError(Exception):
     """
     An error that occurs when a binary code file cannot be produced
     """
+
+
+class NoSectionError(Exception):
+    """
+    An error that occurs when a section is not found
+    """

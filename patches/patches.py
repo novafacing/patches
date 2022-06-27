@@ -9,7 +9,7 @@ data patches)
 """
 
 from dataclasses import InitVar, dataclass, field
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Union
 
 from patches.types import AddressRange, Code, ReturnValue, Value
 
@@ -118,6 +118,16 @@ class InitPatch:
 
 
 @dataclass
+class FiniPatch:
+    """
+    Patch that will run some code upon exit from the program
+    """
+
+    priority: int
+    code: Code
+
+
+@dataclass
 class DataPatch:
     """
     Patch that adds some data with some protections
@@ -138,3 +148,18 @@ class AddCodePatch:
 
     code: Code
     label: Optional[str] = None
+
+
+PatchType = Union[
+    NopPatch,
+    BranchPatch,
+    InvertBranchPatch,
+    AlwaysBranchPatch,
+    NeverBranchPatch,
+    SkipAndReturnPatch,
+    FunctionReplacePatch,
+    CallerReplacePatch,
+    InitPatch,
+    DataPatch,
+    AddCodePatch,
+]
