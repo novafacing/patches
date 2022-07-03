@@ -23,6 +23,7 @@ from patches.patches import (
 from archinfo import Arch
 
 from lief.ELF import Segment
+from patches.shellvm.wrapper import SheLLVM
 
 
 class Patcher:
@@ -141,3 +142,12 @@ class Patcher:
         """
         Apply an add code patch to the target binary
         """
+        if patch.code.c_code:
+            code = SheLLVM().compile(patch.code.c_code)
+        elif patch.code.assembly:
+            # TODO: Handle PC-relative assembly by making this a callable taking the addr
+            code = self.binary.asm(patch.code.assembly, 0)
+        else:
+            code = patch.code.raw
+
+        self.binary.add_code(code, patch.label)

@@ -2,10 +2,11 @@
 Shellvm wrapper utilities
 """
 
+from os import environ
 from pathlib import Path
 from subprocess import CalledProcessError, run
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 from logging import getLogger
 
 from patches.error import (
@@ -113,6 +114,13 @@ class SheLLVM:
         self.objcopy = objcopy
         self.so_path = get_shellvm_so_path()
 
+    def triple(self) -> Tuple[str, ...]:
+        """
+        Get the target triple for the current architecture
+        """
+        res = run([self.cc, "-print-target-triple"], capture_output=True, check=True)
+        return tuple(res.stdout.decode("utf-8").strip().split("-"))
+
     def compile(
         self,
         code: Union[str, bytes],
@@ -121,6 +129,7 @@ class SheLLVM:
         os: str = "",
         environment: str = "",
         extra_run_args: Optional[Dict[str, Any]] = None,
+        auto_triple: bool = True,
     ) -> bytes:
         """
         Compile code with shellvm into a binary region that can be jumped to to execute.
@@ -345,6 +354,9 @@ class SheLLVM:
 
         if isinstance(code, str):
             code = code.encode("utf-8")
+
+        if auto_triple and not arch and not vendor and not os and not environment:
+            arch, vendor, os, environment = self.triple()
 
         triple = (
             f"{arch + '-' if arch else arch}"

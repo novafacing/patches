@@ -111,7 +111,7 @@ class BinaryManager:
             self.lief_binary = parse(binary)
             self.angr_project = Project(
                 self.blob,
-                main_opts={"custom_base_addr": self.lief_binary.imagebase},
+                main_opts={"base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
             self.angr_project.analyses.CFGFast(
@@ -132,7 +132,7 @@ class BinaryManager:
             self.lief_binary = parse(str(self.path))
             self.angr_project = Project(
                 str(self.path),
-                main_opts={"custom_base_addr": self.lief_binary.imagebase},
+                main_opts={"base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
             self.angr_project.analyses.CFGFast(
@@ -207,10 +207,10 @@ class BinaryManager:
             for label, code in self.code_to_add.items():
                 offsets[label] = len(content)
                 content += code
-            segment.content = content
+            segment.content = list(content)
             segment.type = SEGMENT_TYPES.LOAD
             segment.alignment = self.cle_binary.arch.instruction_alignment
-            segment.flags = SEGMENT_FLAGS.R | SEGMENT_FLAGS.X
+            segment.flags = SEGMENT_FLAGS(5)
             new_segment = self.lief_binary.add(segment)
             base_addr = new_segment.virtual_address
 
@@ -234,11 +234,3 @@ class BinaryManager:
         Assemble the given assembly code at the given virtual address
         """
         return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)  # type: ignore
-
-    def add_space(
-        self, size: int, readable: bool, writable: bool, executable: bool
-    ) -> int:
-        """
-        Add space to the binary and return the virtual address where it was added
-        """
-        raise NotImplementedError("add_space is not implemented")

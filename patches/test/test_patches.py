@@ -11,9 +11,9 @@ from ast import main
 from subprocess import run
 from typing import Optional, Tuple, cast
 from patches.test.fixtures import BINARIES_DIR, bins
-from patches.patches import NopPatch
+from patches.patches import AddCodePatch, NopPatch
 from patches.patcher import Patcher
-from patches.types import AddressRange
+from patches.types import AddressRange, Code
 
 from angr import Block
 from angr.knowledge_plugins.functions.function import Function
@@ -108,3 +108,24 @@ Hello, World!
 """
     )
     assert res.returncode == 1
+
+
+def test_add_code_patch(bins) -> None:
+    """
+    Make sure nop patch can be applied
+    """
+    print_twice = bins.get("print_twice.bin")
+    assert print_twice is not None
+    p = Patcher(print_twice)
+    acp = AddCodePatch(
+        Code(
+            c_code="""
+        __attribute__((annotate("shellvm-main"))) int main() {
+            return 1;
+        }
+    """
+        ),
+        label="retone",
+    )
+    p.apply(acp)
+    p.save(BINARIES_DIR / "print_twice_add_code.bin")
