@@ -121,11 +121,13 @@ class BinaryManager:
                 skip_unmapped_addrs=False,
                 force_complete_scan=True,
             )
+
             if self.angr_project.loader.main_object is None:
                 raise FileNotFoundError(
                     f"Requested binary {self.path} "
                     "was not found or could not be opened."
                 )
+
             self.cle_binary = self.angr_project.loader.main_object
         else:
             self.blob = BytesIO(self.path.read_bytes())
@@ -142,11 +144,13 @@ class BinaryManager:
                 skip_unmapped_addrs=False,
                 force_complete_scan=True,
             )
+
             if self.angr_project.loader.main_object is None:
                 raise FileNotFoundError(
                     f"Requested binary {self.path} "
                     "was not found or could not be opened."
                 )
+
             self.cle_binary = self.angr_project.loader.main_object
 
     def write(

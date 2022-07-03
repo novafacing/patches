@@ -84,3 +84,39 @@ class Code:
         """
         if self.assembly is None and self.c_code is None and self.raw is None:
             raise ValueError("No code was provided.")
+
+    @classmethod
+    def build_c_code(
+        cls,
+        body: str,
+        getreg_helper: bool = True,
+        includes: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Build a C code snippet from a body of code.
+
+        :param body: The body of the code to build, which will be wrapped in
+            a main function and compiled.
+        :param getreg_helper: Whether to include the getreg helper macro that
+            can be used by calling `getreg(variable_name, reg_name)` in the body
+            of the function
+        :param includes: A list of include files like `["#include <stdint.h>", ...]`
+        """
+        code = ""
+
+        if includes is not None:
+            code = "\n".join(includes)
+            code += "\n"
+
+        if getreg_helper:
+            code += (
+                """#define getreg(dest, src)  \\\n"""
+                """    register long long dest __asm__ (#src); \\\n"""
+                """    __asm__ ("" :"=r"(dest));\n"""
+            )
+
+        code += """__attribute__((annotate("shellvm-main"))) int main() {\n"""
+        code += body + "\n"
+        code += "}"
+
+        return code

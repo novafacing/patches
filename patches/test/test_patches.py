@@ -119,23 +119,18 @@ def test_add_code_patch(bins) -> None:
     p = Patcher(print_twice)
     acp = AddCodePatch(
         Code(
-            c_code="""
-        #include <stdint.h>
-        #include <stddef.h>
-
-        #define getreg(dest, src)  \
-            register long long dest __asm__ (#src); \
-            __asm__ ("" :"=r"(dest));
-
-        __attribute__((annotate("shellvm-main"))) int main() {
-            getreg(arg0, rdi);
-            getreg(arg1, rsi);
-            getreg(arg2, rdx);
-            for (size_t i = 0; i < arg2; i++) {
-                ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
-            }
-        }
-    """
+            c_code=Code.build_c_code(
+                """
+                getreg(arg0, rdi);
+                getreg(arg1, rsi);
+                getreg(arg2, rdx);
+                for (size_t i = 0; i < arg2; i++) {
+                    ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
+                }
+                """,
+                getreg_helper=True,
+                includes=["#include <stdint.h>", "#include <stddef.h>"],
+            )
         ),
         label="retone",
     )
