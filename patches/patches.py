@@ -20,15 +20,18 @@ class NopPatch:
     Patch that converts specific addresses or ranges of addresses to no-operations
     """
 
-    addresses: InitVar[List[int]]
+    addresses: InitVar[Optional[List[int]]] = None
     address_ranges: Set[AddressRange] = field(default_factory=set)
 
-    def __post_init__(self, addresses: List[int]) -> None:
+    def __post_init__(self, addresses: Optional[List[int]]) -> None:
         """
         Convert optionally provided addresses to address ranges
 
         :param addresses: Addresses that can be provided in lieu of address ranges
         """
+        if addresses is None:
+            return
+
         for address in addresses:
             self.address_ranges.add(AddressRange(start=address, end=address))
 

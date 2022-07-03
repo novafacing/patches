@@ -3,7 +3,7 @@ Main patcher utility
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, cast
 from re import sub
 from patches.binary_info import BinaryInfo
 from patches.patches import (
@@ -20,6 +20,7 @@ from patches.patches import (
     PatchType,
     SkipAndReturnPatch,
 )
+from archinfo import Arch
 
 
 class Patcher:
@@ -58,11 +59,28 @@ class Patcher:
         patch_dispatch_func = getattr(self, patch_dispatch_func_name)
         patch_dispatch_func(patch)
 
+    def save(self, path: Path) -> None:
+        """
+        Save the patched binary to the given path
+        """
+        self.binary.save(path)
+        path.chmod(0o755)
+
     def apply_nop_patch(self, patch: NopPatch) -> None:
         """
         Apply a nop patch to the target binary
         """
-        raise NotImplementedError("Nop patches are not supported.")
+        nop_len = len(cast(Arch, self.binary.cle_binary.arch).nop_instruction)
+
+        for address_range in patch.address_ranges:
+            for address in range(
+                address_range.start,
+                max(address_range.end, address_range.start + nop_len),
+                nop_len,
+            ):
+                self.binary.write(
+                    address, cast(Arch, self.binary.cle_binary.arch).nop_instruction
+                )
 
     def apply_invert_branch_patch(self, patch: InvertBranchPatch) -> None:
         """
