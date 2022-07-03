@@ -15,7 +15,7 @@ from patches.patches import AddCodePatch, NopPatch
 from patches.patcher import Patcher
 from patches.types import AddressRange, Code
 
-from angr import Block
+from angr import Block, Project
 from angr.knowledge_plugins.functions.function import Function
 from capstone.x86_const import (
     X86_REG_RAX,
@@ -126,8 +126,7 @@ def test_add_code_patch(bins) -> None:
                 getreg(arg2, rdx);
                 for (size_t i = 0; i < arg2; i++) {
                     ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
-                }
-                """,
+                }""",
                 getreg_helper=True,
                 includes=["#include <stdint.h>", "#include <stddef.h>"],
             )
@@ -136,3 +135,13 @@ def test_add_code_patch(bins) -> None:
     )
     p.apply(acp)
     p.save(BINARIES_DIR / "print_twice_add_code.bin")
+    proj = Project(
+        str(BINARIES_DIR / "print_twice_add_code.bin"),
+        main_opts={"base_addr": p.binary.lief_binary.imagebase},
+        auto_load_libs=False,
+    )
+    for segment in proj.loader.main_object.segments:
+        if segment.vaddr == 0xD000:
+            break
+    else:
+        raise AssertionError("Could not find expected code segment at 0xd000!")
