@@ -2,21 +2,21 @@
 Shellvm wrapper utilities
 """
 
+from logging import getLogger
 from os import environ
 from pathlib import Path
 from subprocess import CalledProcessError, run
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Optional, Tuple, Union
-from logging import getLogger
-
-from patches.error import (
-    CompilationError,
-    TransformationError,
-    CodegenError,
-    BinaryCreateError,
-)
 
 from lief import parse
+
+from patches.error import (
+    BinaryCreateError,
+    CodegenError,
+    CompilationError,
+    TransformationError,
+)
 
 SHELLVM_SO_PATH = Path(__file__).with_name("shellvm.so")
 logger = getLogger(__name__)

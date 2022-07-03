@@ -5,8 +5,8 @@ Test BinaryInfo class and binary loading
 
 from pathlib import Path
 from typing import Dict
-from patches.binary_manager import BinaryManager
 
+from patches.binary_manager import BinaryManager
 from patches.test.fixtures import bins
 
 

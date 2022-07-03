@@ -3,8 +3,11 @@ Main patcher utility
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Union, cast
 from re import sub
+from typing import Dict, Optional, Union, cast
+
+from archinfo import Arch
+
 from patches.binary_manager import BinaryManager
 from patches.patches import (
     AddCodePatch,
@@ -18,12 +21,9 @@ from patches.patches import (
     NeverBranchPatch,
     NopPatch,
     PatchType,
+    ReplaceCodePatch,
     SkipAndReturnPatch,
 )
-from archinfo import Arch
-
-from lief.ELF import Segment
-from patches.shellvm.wrapper import SheLLVM
 
 
 class Patcher:
@@ -38,6 +38,11 @@ class Patcher:
     ) -> None:
         """
         Set up patcher with the target binary
+
+        :param binary: Either a path to the target binary or the raw bytes
+            of the binary
+        :param cle_opts: An optional replacement set of options to pass to
+            cle.Loader
         """
         self.binary = BinaryManager(binary, cle_opts)
 
@@ -142,12 +147,10 @@ class Patcher:
         """
         Apply an add code patch to the target binary
         """
-        if patch.code.c_code:
-            code = SheLLVM().compile(patch.code.c_code)
-        elif patch.code.assembly:
-            # TODO: Handle PC-relative assembly by making this a callable taking the addr
-            code = self.binary.asm(patch.code.assembly, 0)
-        else:
-            code = patch.code.raw
+        self.binary.add_code(patch.code, patch.label)
 
-        self.binary.add_code(code, patch.label)
+    def apply_replace_code_patch(self, patch: ReplaceCodePatch) -> None:
+        """
+        Apply a replace code patch to the target binary
+        """
+        self.binary.write(patch.address, patch.code)

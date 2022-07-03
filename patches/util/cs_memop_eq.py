@@ -5,16 +5,17 @@ have a __eq__ method that works.
 
 from ctypes import Structure
 from typing import Tuple
+
 from capstone.arm import ArmOpMem
+from capstone.arm64 import Arm64OpMem
 from capstone.m68k import M68KOpMem
 from capstone.mips import MipsOpMem
-from capstone.arm64 import Arm64OpMem
 from capstone.ppc import PpcOpMem
-from capstone.x86 import X86OpMem
-from capstone.xcore import XcoreOpMem
-from capstone.tms320c64x import TMS320C64xOpMem
 from capstone.sparc import SparcOpMem
 from capstone.systemz import SyszOpMem
+from capstone.tms320c64x import TMS320C64xOpMem
+from capstone.x86 import X86OpMem
+from capstone.xcore import XcoreOpMem
 
 
 def cs_memop_eq(first: Structure, second: Structure) -> bool:

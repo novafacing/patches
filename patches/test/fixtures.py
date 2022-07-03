@@ -1,8 +1,8 @@
 from pathlib import Path
 from subprocess import DEVNULL, run
 from typing import Dict
-from pytest import fixture
 
+from pytest import fixture
 
 BINARIES_DIR = Path(__file__).with_name("binaries")
 

@@ -4,21 +4,24 @@ Binary program wrapper
 
 from dataclasses import dataclass
 from io import BytesIO
+from logging import getLogger
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
-from logging import getLogger
 
-from lief import parse, Binary as LIEFBinary  # pylint: disable=no-name-in-module
-from lief.ELF import Segment
-from lief.ELF import SEGMENT_TYPES
-from lief.ELF import SEGMENT_FLAGS
-
-from archinfo import Arch
 from angr import Project
 from cle.backends import Backend
-from cle.loader import Loader
+from lief import Binary as LIEFBinary  # pylint: disable=no-name-in-module
+from lief import parse  # pylint: disable=no-name-in-module
+from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
+    SEGMENT_FLAGS,
+    SEGMENT_TYPES,
+    Segment,
+)
+from capstone import CsInsn
 
 from patches.error import NoSectionError
+from patches.shellvm.wrapper import SheLLVM
+from patches.types import Code, TransformInfo
 
 logger = getLogger(__name__)
 
@@ -34,7 +37,7 @@ class WriteOperation:
     :attribute vaddr: The virtual address or label location to write to
     """
 
-    data: Union[bytes, Callable[[Dict[str, int]], bytes]]
+    data: Union[bytes, Callable[[Dict[str, int]], bytes], Code]
     where: Union[str, int]
 
 
@@ -60,7 +63,7 @@ class BinaryManager:
         "force_complete_scan": False,
     }
     writes: List[WriteOperation] = []
-    code_to_add: Dict[str, bytes] = {}
+    code_to_add: Dict[str, Code] = {}
 
     def __init__(
         self,
@@ -156,7 +159,7 @@ class BinaryManager:
     def write(
         self,
         where: Union[int, str],
-        data: Union[bytes, Callable[[Dict[str, int]], bytes]],
+        data: Union[bytes, Callable[[Dict[str, int]], bytes], Code],
     ) -> None:
         """
         Write data to the binary at the given virtual address
@@ -166,7 +169,9 @@ class BinaryManager:
             and addresses and returns bytes to write to the patch
         """
 
-        self.writes.append(WriteOperation(data, where))
+        operation = WriteOperation(data, where)
+        logger.info(f"Queuing write operation: {operation}")
+        self.writes.append(operation)
 
     def read(self, vaddr: int, size: int) -> bytes:
         """
@@ -183,7 +188,25 @@ class BinaryManager:
         self.blob.seek(section.addr_to_offset(vaddr))
         return self.blob.read(size)
 
-    def add_code(self, code: bytes, label: Optional[str] = None) -> None:
+    def code(self, code: Code) -> bytes:
+        """
+        Get the raw code from a code object
+
+        :param code: The code object
+        """
+        if code.c_code:
+            return SheLLVM().compile(code.c_code)
+
+        if code.assembly:
+            # TODO: Handle PC-relative assembly by making this a callable taking the addr
+            return self.asm(code.assembly, 0)
+
+        if code.raw:
+            return code.raw
+
+        raise ValueError("Code object has no code or assembly")
+
+    def add_code(self, code: Code, label: Optional[str] = None) -> None:
         """
         Mark some code as being added on next save
 
@@ -193,6 +216,8 @@ class BinaryManager:
         """
         if label is None:
             label = f"code_{len(self.code_to_add)}"
+
+        logger.info(f"Queueing code addition at label {label}: {code}")
 
         self.code_to_add[label] = code
 
@@ -205,22 +230,36 @@ class BinaryManager:
         offsets = {}
         base_addr = None
 
+        text_section_offset = self.lief_binary.get_section(".text").offset
+
+        # Add code to the binary if there is any to add
         if self.code_to_add:
             segment = Segment()
             content = b""
+
             for label, code in self.code_to_add.items():
+                logger.info(f"Adding code at label {label}")
                 offsets[label] = len(content)
-                content += code
+                content += self.code(code)
+
             segment.content = list(content)
             segment.type = SEGMENT_TYPES.LOAD
             segment.alignment = self.cle_binary.arch.instruction_alignment
             segment.flags = SEGMENT_FLAGS(5)
             new_segment = self.lief_binary.add(segment)
             base_addr = new_segment.virtual_address
+
             for label, offset in offsets.items():
                 offsets[label] += base_addr
 
-        print(offsets)
+        new_text_section_offset = self.lief_binary.get_section(".text").offset
+        text_section_adjust = new_text_section_offset - text_section_offset
+
+        # After adding code, the program headers move to the end of the file and
+        # the .text section address changes on disk, so we need to perform a relocation
+        # based on the new offset of the text section
+
+        tinfo = TransformInfo(offsets, text_section_adjust, self.lief_binary)
 
         for write in self.writes:
             if isinstance(write.where, str):
@@ -228,10 +267,17 @@ class BinaryManager:
             else:
                 offset = write.where
 
+            offset += text_section_adjust
+
             if isinstance(write.data, bytes):
                 data = write.data
+            elif isinstance(write.data, Code):
+                write.data.transform(tinfo)
+                data = self.code(write.data)
             else:
                 data = write.data(offsets)
+
+            logger.info(f"Writing {len(data)} bytes at {offset:#0x}")
 
             self.lief_binary.patch_address(offset, list(data))
 
@@ -242,3 +288,31 @@ class BinaryManager:
         Assemble the given assembly code at the given virtual address
         """
         return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)  # type: ignore
+
+    def disasm(self, vaddr: int) -> CsInsn:
+        """
+        Disassemble the binary at an address
+
+        :param vaddr: The virtual address to disassemble at
+        """
+        block = (
+            self.binary.angr_project.kb.cfgs["CFGFast"]
+            .get_any_node(vaddr, anyaddr=True)
+            .block
+        )
+
+        for instr in block.capstone.insns:
+            if instr.address == vaddr:
+                return instr
+
+        raise ValueError(f"Could not find instruction at {vaddr:#0x}")
+
+    def relative_call_addr(self, source: int, dest: int) -> int:
+        """
+        Calculate the relative offset of dest from source
+
+        :param source: The address of the instruction making the call
+        :param dest: The address of the instruction that should be called
+            to
+        """
+        isize = self.disasm(source).size

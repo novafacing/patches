@@ -12,9 +12,9 @@ from logging import (
     getLogRecordFactory,
     setLogRecordFactory,
 )
+from os import getenv
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from os import getenv
 
 from coloredlogs import ColoredFormatter, install
 

@@ -144,13 +144,30 @@ class DataPatch:
 
 
 @dataclass
-class AddCodePatch:
+class CodePatch:
+    """
+    Patch that holds some code
+    """
+
+    code: Code
+
+
+@dataclass
+class AddCodePatch(CodePatch):
     """
     Patch that adds some code to the binary at some location
     """
 
-    code: Code
     label: Optional[str] = None
+
+
+@dataclass
+class ReplaceCodePatch(CodePatch):
+    """
+    Patch that replaces some code with some other code
+    """
+
+    address: int
 
 
 PatchType = Union[
@@ -165,4 +182,5 @@ PatchType = Union[
     InitPatch,
     DataPatch,
     AddCodePatch,
+    ReplaceCodePatch,
 ]

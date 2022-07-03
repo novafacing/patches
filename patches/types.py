@@ -4,7 +4,9 @@ Common types used by patches
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
+
+from lief import Binary
 
 
 class TYPECLASS(str, Enum):
@@ -69,6 +71,23 @@ class AddressRange:
 
 
 @dataclass
+class TransformInfo:
+    """
+    Information container used for transforming code based on context
+
+    :attribute label_offsets: Dictionary of label: address of the addresses
+        of each label added to the program
+    :attribute text_offset: If the text section has moved, add this to any
+        address that was in the text section to refer to it and reflect
+        the movement
+    """
+
+    label_offsets: Dict[str, int]
+    text_offset: int
+    lief_binary: Binary
+
+
+@dataclass
 class Code:
     """
     Code either in assembly, C, or already assembled bytes
@@ -77,6 +96,9 @@ class Code:
     assembly: Optional[str] = None
     c_code: Optional[str] = None
     raw: Optional[bytes] = None
+    transform_asm: Optional[Callable[[str, TransformInfo], str]] = None
+    transform_c_code: Optional[Callable[[str, TransformInfo], str]] = None
+    transform_raw: Optional[Callable[[bytes, TransformInfo], bytes]] = None
 
     def __post_init__(self) -> None:
         """
@@ -84,6 +106,20 @@ class Code:
         """
         if self.assembly is None and self.c_code is None and self.raw is None:
             raise ValueError("No code was provided.")
+
+    def transform(self, tinfo: TransformInfo) -> None:
+        """
+        Call a transformer function if one is present that modifies the current code
+        using the label to address mapping provided
+
+        :param offsets: A mapping of labels to addresses
+        """
+        if self.assembly is not None and self.transform_asm is not None:
+            self.assembly = self.transform_asm(self.assembly, tinfo)
+        if self.c_code is not None and self.transform_c_code is not None:
+            self.c_code = self.transform_c_code(self.c_code, tinfo)
+        if self.raw is not None and self.transform_raw is not None:
+            self.raw = self.transform_raw(self.raw, tinfo)
 
     @classmethod
     def build_c_code(
