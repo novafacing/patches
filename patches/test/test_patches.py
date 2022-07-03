@@ -162,6 +162,7 @@ def test_add_code_and_replace_code(bins) -> None:
                 getreg(arg0, rdi);
                 getreg(arg1, rsi);
                 getreg(arg2, rdx);
+                // Memcpy the data backward
                 for (size_t i = 0; i < arg2; i++) {
                     ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
                 }""",
@@ -187,16 +188,6 @@ def test_add_code_and_replace_code(bins) -> None:
             memcpy_call_addr = block.instruction_addrs[-1]
 
     assert memcpy_call_addr is not None, "No memcpy call found"
-
-    print(
-        f"Lief addr: {memcpy_call_addr:#0x}: "
-        f"{p.binary.lief_binary.virtual_address_to_offset(memcpy_call_addr):#0x}"
-    )
-
-    print(
-        f"Angr addr of {memcpy_call_addr:#0x}: "
-        f"{p.binary.angr_project.loader.main_object.addr_to_offset(memcpy_call_addr):#0x}"
-    )
 
     def transformer(asm: str, tinfo: TransformInfo) -> str:
         """
