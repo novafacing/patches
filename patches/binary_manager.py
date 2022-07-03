@@ -213,10 +213,14 @@ class BinaryManager:
             segment.flags = SEGMENT_FLAGS(5)
             new_segment = self.lief_binary.add(segment)
             base_addr = new_segment.virtual_address
+            for label, offset in offsets.items():
+                offsets[label] += base_addr
+
+        print(offsets)
 
         for write in self.writes:
             if isinstance(write.where, str):
-                offset = offsets[write.where] + base_addr
+                offset = offsets[write.where]
             else:
                 offset = write.where
 

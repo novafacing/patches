@@ -16,6 +16,8 @@ from patches.error import (
     BinaryCreateError,
 )
 
+from lief import parse
+
 SHELLVM_SO_PATH = Path(__file__).with_name("shellvm.so")
 logger = getLogger(__name__)
 
@@ -452,7 +454,7 @@ class SheLLVM:
                     "-target",
                     triple,
                     "-Oz",
-                    "-s",
+                    "-g",
                     "-x",
                     "ir",
                     "-o",
@@ -491,7 +493,31 @@ class SheLLVM:
             elf_text_path.unlink(missing_ok=True)
             raise BinaryCreateError("Failed to obtain a text section as binary") from e
 
-        code_output = elf_text_path.read_bytes()
+        elf_output = elf_path.read_bytes()
+        elf_binary = parse(elf_output)
+
+        syms: Dict[str, int] = {}
+        for sym in elf_binary.symbols:
+            if isinstance(sym.value, int):
+                syms[sym.name] = sym.value
+
+        text_offset = 0
+        for sec in elf_binary.sections:
+            if sec.name == ".text":
+                text_offset = sec.offset
+
+        main_addr = syms.get("main")
+        assert isinstance(main_addr, int)
+
+        next_sym = sorted(
+            filter(lambda v: v > main_addr, syms.values()),
+            key=lambda v: v - main_addr,
+        )[0]
+        main_size = next_sym - main_addr
+
+        code_output = elf_text_path.read_bytes()[
+            main_addr - text_offset : (main_addr - text_offset) + main_size
+        ]
 
         elf_path.unlink(missing_ok=True)
         elf_text_path.unlink(missing_ok=True)

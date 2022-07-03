@@ -120,8 +120,20 @@ def test_add_code_patch(bins) -> None:
     acp = AddCodePatch(
         Code(
             c_code="""
+        #include <stdint.h>
+        #include <stddef.h>
+
+        #define getreg(dest, src)  \
+            register long long dest __asm__ (#src); \
+            __asm__ ("" :"=r"(dest));
+
         __attribute__((annotate("shellvm-main"))) int main() {
-            return 1;
+            getreg(arg0, rdi);
+            getreg(arg1, rsi);
+            getreg(arg2, rdx);
+            for (size_t i = 0; i < arg2; i++) {
+                ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
+            }
         }
     """
         ),
