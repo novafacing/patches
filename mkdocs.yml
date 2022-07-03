@@ -1,0 +1,7 @@
+site_name: Patches Documentation
+
+theme:
+  name: "readthedocs"
+
+plugins:
+  - mkdocstrings
