@@ -72,7 +72,8 @@ def test_nop_patch(bins) -> None:
                     and instr.operands[0].value.reg
                     in (X86_REG_RAX, X86_REG_EAX, X86_REG_AX, X86_REG_AH, X86_REG_AL)
                 ):
-                    print("Ret source: ", assign_ret_source)
+                    # Figure out where the last assign to RAX is and get the source
+                    # of the assignment
                     assign_ret_source = instr.operands[1]
 
                 if (
@@ -81,6 +82,8 @@ def test_nop_patch(bins) -> None:
                     and instr.operands[0].type == CS_OP_MEM
                     and cs_memop_eq(instr.operands[0], assign_ret_source)
                 ):
+                    # Figure out where the last assign to where the return value is stored
+                    # is and add a nop patch to it
                     ranges.add(
                         AddressRange(
                             instr.address,

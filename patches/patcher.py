@@ -5,7 +5,7 @@ Main patcher utility
 from pathlib import Path
 from typing import Dict, Optional, Union, cast
 from re import sub
-from patches.binary_info import BinaryInfo
+from patches.binary_manager import BinaryManager
 from patches.patches import (
     AddCodePatch,
     AlwaysBranchPatch,
@@ -22,6 +22,8 @@ from patches.patches import (
 )
 from archinfo import Arch
 
+from lief.ELF import Segment
+
 
 class Patcher:
     """
@@ -36,7 +38,7 @@ class Patcher:
         """
         Set up patcher with the target binary
         """
-        self.binary = BinaryInfo(binary, cle_opts)
+        self.binary = BinaryManager(binary, cle_opts)
 
     def apply(self, patch: PatchType) -> None:
         """
@@ -92,7 +94,6 @@ class Patcher:
         """
         Apply a branch patch to the target binary
         """
-        raise NotImplementedError("Branch patches are not supported.")
 
     def apply_never_branch_patch(self, patch: NeverBranchPatch) -> None:
         """
@@ -140,4 +141,3 @@ class Patcher:
         """
         Apply an add code patch to the target binary
         """
-        raise NotImplementedError("Add code patches are not supported.")

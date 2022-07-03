@@ -2,12 +2,16 @@
 Binary program wrapper
 """
 
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Optional, Union, cast
+from typing import Callable, Dict, List, Optional, Union, cast
 from logging import getLogger
 
 from lief import parse, Binary as LIEFBinary  # pylint: disable=no-name-in-module
+from lief.ELF import Segment
+from lief.ELF import SEGMENT_TYPES
+from lief.ELF import SEGMENT_FLAGS
 
 from archinfo import Arch
 from angr import Project
@@ -19,7 +23,22 @@ from patches.error import NoSectionError
 logger = getLogger(__name__)
 
 
-class BinaryInfo:
+@dataclass
+class WriteOperation:
+    """
+    A write operation to be performed on a section
+
+    :attribute data: Either raw bytes or a function that takes the resolved
+        labels for all patches and returns raw bytes
+
+    :attribute vaddr: The virtual address or label location to write to
+    """
+
+    data: Union[bytes, Callable[[Dict[str, int]], bytes]]
+    where: Union[str, int]
+
+
+class BinaryManager:
     """
     Wrapper for a binary program to provide information for patching
     """
@@ -40,6 +59,8 @@ class BinaryInfo:
         "skip_unmapped_addrs": True,
         "force_complete_scan": False,
     }
+    writes: List[WriteOperation] = []
+    code_to_add: Dict[str, bytes] = {}
 
     def __init__(
         self,
@@ -90,6 +111,7 @@ class BinaryInfo:
             self.lief_binary = parse(binary)
             self.angr_project = Project(
                 self.blob,
+                main_opts={"custom_base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
             self.angr_project.analyses.CFGFast(
@@ -110,6 +132,7 @@ class BinaryInfo:
             self.lief_binary = parse(str(self.path))
             self.angr_project = Project(
                 str(self.path),
+                main_opts={"custom_base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
             self.angr_project.analyses.CFGFast(
@@ -126,20 +149,20 @@ class BinaryInfo:
                 )
             self.cle_binary = self.angr_project.loader.main_object
 
-    def write(self, vaddr: int, data: bytes) -> None:
+    def write(
+        self,
+        where: Union[int, str],
+        data: Union[bytes, Callable[[Dict[str, int]], bytes]],
+    ) -> None:
         """
         Write data to the binary at the given virtual address
-        """
-        try:
-            section = next(
-                filter(lambda s: s.contains_addr(vaddr), self.cle_binary.sections)
-            )
-        except StopIteration as e:
-            logger.error(f"Could not find section for address {vaddr}")
-            raise NoSectionError(f"Could not find section for address {vaddr}") from e
 
-        self.blob.seek(section.addr_to_offset(vaddr))
-        self.blob.write(data)
+        :param where: Either an address or a label that will resolve to an address
+        :param data: The bytes or a function that takes a dictionary of labels
+            and addresses and returns bytes to write to the patch
+        """
+
+        self.writes.append(WriteOperation(data, where))
 
     def read(self, vaddr: int, size: int) -> bytes:
         """
@@ -156,14 +179,55 @@ class BinaryInfo:
         self.blob.seek(section.addr_to_offset(vaddr))
         return self.blob.read(size)
 
+    def add_code(self, code: bytes, label: Optional[str] = None) -> None:
+        """
+        Mark some code as being added on next save
+
+        :param code: The binary code being added
+        :param label: The label to associate with the code for resolution of
+            other patches referencing it
+        """
+        if label is None:
+            label = f"code_{len(self.code_to_add)}"
+
+        self.code_to_add[label] = code
+
     def save(self, where: Path) -> None:
         """
         Save the binary to where
 
         :param where: Path to save the binary to
         """
-        self.blob.seek(0)
-        where.write_bytes(self.blob.read())
+        offsets = {}
+        base_addr = None
+
+        if self.code_to_add:
+            segment = Segment()
+            content = b""
+            for label, code in self.code_to_add.items():
+                offsets[label] = len(content)
+                content += code
+            segment.content = content
+            segment.type = SEGMENT_TYPES.LOAD
+            segment.alignment = self.cle_binary.arch.instruction_alignment
+            segment.flags = SEGMENT_FLAGS.R | SEGMENT_FLAGS.X
+            new_segment = self.lief_binary.add(segment)
+            base_addr = new_segment.virtual_address
+
+        for write in self.writes:
+            if isinstance(write.where, str):
+                offset = offsets[write.where] + base_addr
+            else:
+                offset = write.where
+
+            if isinstance(write.data, bytes):
+                data = write.data
+            else:
+                data = write.data(offsets)
+
+            self.lief_binary.patch_address(offset, list(data))
+
+        self.lief_binary.write(str(where))
 
     def asm(self, asm: str, vaddr: int) -> bytes:
         """
