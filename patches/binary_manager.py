@@ -57,8 +57,8 @@ class BinaryManager:
     }
     cfg_opts: Dict[str, bool] = {
         "normalize": True,
-        "data_references": True,
-        "cross_references": True,
+        "data_references": False,
+        "cross_references": False,
         "skip_unmapped_addrs": True,
         "force_complete_scan": False,
     }
@@ -70,7 +70,7 @@ class BinaryManager:
         binary: Union[Path, str, bytes],
         cle_opts: Optional[Dict[str, bool]] = None,
         cfg_opts: Optional[Dict[str, bool]] = None,
-        silence_angr_logs: bool = True,
+        silence_angr_logs: bool = False,
     ) -> None:
         """
         Initialize the binary wrapper via one of several methods.
@@ -117,12 +117,8 @@ class BinaryManager:
                 main_opts={"base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
-            self.angr_project.analyses.CFGFast(
-                normalize=True,
-                data_references=True,
-                cross_references=True,
-                skip_unmapped_addrs=False,
-                force_complete_scan=True,
+            self.angr_project.analyses.CFGFast(  # type: ignore
+                **self.cfg_opts,
             )
 
             if self.angr_project.loader.main_object is None:
@@ -140,12 +136,8 @@ class BinaryManager:
                 main_opts={"base_addr": self.lief_binary.imagebase},
                 load_options=self.cle_opts,
             )
-            self.angr_project.analyses.CFGFast(
-                normalize=True,
-                data_references=True,
-                cross_references=True,
-                skip_unmapped_addrs=False,
-                force_complete_scan=True,
+            self.angr_project.analyses.CFGFast(  # type: ignore
+                **self.cfg_opts,
             )
 
             if self.angr_project.loader.main_object is None:
