@@ -8,8 +8,8 @@ from typing import Dict, Optional, Union, cast
 
 from archinfo import Arch
 
-from patches.binary_manager import BinaryManager
-from patches.patches import (
+from pypatches.binary_manager import BinaryManager
+from pypatches.patches import (
     AddCodePatch,
     AlwaysBranchPatch,
     CallerReplacePatch,

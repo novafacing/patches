@@ -2,10 +2,10 @@ from test.fixtures import bins
 from angr.errors import SimTranslationError
 
 from pathlib import Path
-from patches.patcher import Patcher
-from patches.patches import AddCodePatch, ReplaceCodePatch, CallerReplacePatch
-from patches.types import AddressRange, TransformInfo
-from patches.types import Code
+from pypatches.patcher import Patcher
+from pypatches.patches import AddCodePatch, ReplaceCodePatch, CallerReplacePatch
+from pypatches.types import AddressRange, TransformInfo
+from pypatches.types import Code
 
 
 def test_axssl_patch(bins) -> None:

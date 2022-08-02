@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "patches"
+name = "pypatches"
 version = "0.1.2"
 description = "Binary patching framework"
 authors = ["novafacing <rowanbhart@gmail.com>"]

@@ -6,7 +6,7 @@ Test BinaryInfo class and binary loading
 from pathlib import Path
 from typing import Dict
 
-from patches.binary_manager import BinaryManager
+from pypatches.binary_manager import BinaryManager
 from test.fixtures import bins
 
 

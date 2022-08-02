@@ -20,8 +20,8 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
 from capstone import CsInsn
 from pysquishy.squishy import Squishy
 
-from patches.error import NoSectionError
-from patches.types import Code, TransformInfo
+from pypatches.error import NoSectionError
+from pypatches.types import Code, TransformInfo
 
 logger = getLogger(__name__)
 

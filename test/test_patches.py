@@ -11,9 +11,9 @@ from ast import main
 from subprocess import run
 from typing import Optional, Tuple, cast
 from test.fixtures import BINARIES_DIR, bins
-from patches.patches import AddCodePatch, NopPatch, ReplaceCodePatch
-from patches.patcher import Patcher
-from patches.types import AddressRange, Code, TransformInfo
+from pypatches.patches import AddCodePatch, NopPatch, ReplaceCodePatch
+from pypatches.patcher import Patcher
+from pypatches.types import AddressRange, Code, TransformInfo
 
 from angr import Block, Project
 from angr.knowledge_plugins.functions.function import Function
@@ -27,7 +27,7 @@ from capstone.x86_const import (
 from capstone import CS_OP_REG, CS_OP_MEM
 from ptpython.repl import embed
 
-from patches.util.cs_memop_eq import cs_memop_eq
+from pypatches.util.cs_memop_eq import cs_memop_eq
 
 
 def test_nop_patch(bins) -> None:

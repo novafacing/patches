@@ -11,7 +11,7 @@ data patches)
 from dataclasses import InitVar, dataclass, field
 from typing import List, Optional, Set, Union
 
-from patches.types import AddressRange, Code, ReturnValue, Value
+from pypatches.types import AddressRange, Code, ReturnValue, Value
 
 
 @dataclass

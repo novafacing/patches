@@ -1,4 +1,4 @@
 """
 Patches main module
 """
-from patches.log import *
+from pypatches.log import *
