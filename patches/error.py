@@ -12,7 +12,7 @@ class CompilationError(Exception):
 class TransformationError(Exception):
     """
     An error that occurs when transformation of LLVM bitcode using the
-    shellvm wrapper fails
+    wrapper fails
     """
 
 

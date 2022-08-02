@@ -1,4 +1,4 @@
-from patches.test.fixtures import bins
+from test.fixtures import bins
 from angr.errors import SimTranslationError
 
 from pathlib import Path
@@ -22,17 +22,27 @@ def test_axssl_patch(bins) -> None:
     lief_bin = pat.binary.lief_binary
     angr_proj = pat.binary.angr_project
 
+    extra_reface_code = """
+                int retone() {
+                    return 1;
+                }
+                """
+
     reface_code = """
                 getreg(arg3, r10);
                 // read(0, (char*)arg3, (int)(arg3+8));
-                return 0;
+                int a = retone();
+                return a;
                 """
 
     # Create a wrapper patch -- the below code will be placed into a function body, compiled, and mapped
     # as an executable segment and can be referenced from the "reinterfaced_func" label
     reface_func = Code(
         c_code=Code.build_c_code(
-            reface_code, includes=["#include <unistd.h>"], getreg_helper=True
+            reface_code,
+            includes=["#include <unistd.h>"],
+            getreg_helper=True,
+            extra_code=extra_reface_code,
         ),
     )
     reface_addfunc_patch = AddCodePatch(reface_func, label="reinterfaced_func")

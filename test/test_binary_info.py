@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict
 
 from patches.binary_manager import BinaryManager
-from patches.test.fixtures import bins
+from test.fixtures import bins
 
 
 def test_load_ais_lite_path(bins: Dict[str, Path]) -> None:

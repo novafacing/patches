@@ -166,4 +166,4 @@ cython_debug/
 
 poetry.lock
 setup.py
-patches/shellvm/libshellvm.so
+core

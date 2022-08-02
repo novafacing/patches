@@ -18,9 +18,9 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
     Segment,
 )
 from capstone import CsInsn
+from pysquishy.squishy import Squishy
 
 from patches.error import NoSectionError
-from patches.shellvm.wrapper import SheLLVM
 from patches.types import Code, TransformInfo
 
 logger = getLogger(__name__)
@@ -187,7 +187,12 @@ class BinaryManager:
         :param code: The code object
         """
         if code.c_code:
-            return SheLLVM().compile(code.c_code)
+            compiled_code = Squishy().compile(code.c_code)
+
+            disassembly = self.angr_project.arch.disasm(compiled_code, 0)
+            logger.info(f"Disassembly: {disassembly}")
+
+            return compiled_code
 
         if code.assembly:
             # TODO: Handle PC-relative assembly by making this a callable taking the addr
@@ -230,7 +235,7 @@ class BinaryManager:
             content = b""
 
             for label, code in self.code_to_add.items():
-                logger.info(f"Adding code at label {label}")
+                logger.info(f"Adding code at label {label}: {code}")
                 offsets[label] = len(content)
                 content += self.code(code)
 

@@ -127,6 +127,7 @@ class Code:
         body: str,
         getreg_helper: bool = True,
         includes: Optional[List[str]] = None,
+        extra_code: Optional[str] = None,
     ) -> str:
         """
         Build a C code snippet from a body of code.
@@ -144,6 +145,9 @@ class Code:
             code = "\n".join(includes)
             code += "\n"
 
+        if extra_code is not None:
+            code += extra_code + "\n"
+
         if getreg_helper:
             code += (
                 """#define getreg(dest, src)  \\\n"""
@@ -151,7 +155,7 @@ class Code:
                 """    __asm__ ("" :"=r"(dest));\n"""
             )
 
-        code += """__attribute__((annotate("shellvm-main"))) int main() {\n"""
+        code += """int main() {\n"""
         code += body + "\n"
         code += "}"
 

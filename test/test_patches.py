@@ -10,7 +10,7 @@ tested on them as well
 from ast import main
 from subprocess import run
 from typing import Optional, Tuple, cast
-from patches.test.fixtures import BINARIES_DIR, bins
+from test.fixtures import BINARIES_DIR, bins
 from patches.patches import AddCodePatch, NopPatch, ReplaceCodePatch
 from patches.patcher import Patcher
 from patches.types import AddressRange, Code, TransformInfo
@@ -113,7 +113,7 @@ Hello, World!
 
 def test_add_code_patch(bins) -> None:
     """
-    Make sure nop patch can be applied
+    Make sure we can add code to a binary
     """
     print_twice = bins.get("print_twice.bin")
     assert print_twice is not None
@@ -150,7 +150,9 @@ def test_add_code_patch(bins) -> None:
 
 def test_add_code_and_replace_code(bins) -> None:
     """
-    Make sure nop patch can be applied
+    Add code to a binary, replace a call to one function with a call to the added
+    code, and make sure the output is what we expect (reversed, because we replaced
+    a call to memcpy with a call to our memcpy that copies backward)
     """
     print_twice = bins.get("print_twice.bin")
     assert print_twice is not None
