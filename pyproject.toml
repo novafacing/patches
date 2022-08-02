@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "patches"
-version = "0.1.1"
+version = "0.1.2"
 description = "Binary patching framework"
 authors = ["novafacing <rowanbhart@gmail.com>"]
 license = "MIT"
