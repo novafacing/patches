@@ -1,4 +1,4 @@
-site_name: Patches Documentation
+site_name: PyPatches Documentation
 
 theme:
   name: "readthedocs"

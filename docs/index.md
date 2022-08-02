@@ -1,7 +1,7 @@
-# Patches Documentation
+# PyPatches Documentation
 
 
-Patches is a library that aims to make binary patching easy!
+PyPatches is a library that aims to make binary patching easy!
 
 ## Patch Strategies
 
@@ -16,7 +16,7 @@ Patches is a library that aims to make binary patching easy!
 
 ## Dependencies
 
-Patches uses the following libraries and packages, each for their intended purpose:
+PyPatches uses the following libraries and packages, each for their intended purpose:
 
 - archinfo: For architecture information about the binary's architecture
 - cle: For loading, segment/section information, symbols
@@ -35,7 +35,7 @@ Patches uses the following libraries and packages, each for their intended purpo
 
 ## Examples
 
-Probably the best source of examples is the `patches/test` directory. It will have
+Probably the best source of examples is the `pypatches/test` directory. It will have
 up-to-date tests of each feature of the library that can be used as a jumping-off
 point for using the library. Here are a few small examples to get you started:
 
@@ -46,9 +46,9 @@ would-be reverse engineers from debugging it. We can quickly defeat this techniq
 
 ```python
 from pathlib import Path
-from patches.patcher import Patcher
-from patches.patches import NopPatch
-from patches.types import AddressRange
+from pypatches.patcher import Patcher
+from pypatches.patches import NopPatch
+from pypatches.types import AddressRange
 
 # Make a path to the binary
 bin = Path("./test-bin")
@@ -77,13 +77,13 @@ pat.apply(patch)
 pat.save(bin.with_name(bin.name + ".patched"))
 ```
 
-We'll now have a program with our anti-debugging `ptrace` calls removed! `patches` uses
+We'll now have a program with our anti-debugging `ptrace` calls removed! `pypatches` uses
 angr to take care of a lot of the dirty work, so we don't have to worry about compiling
 the assembly ourselves, picking the right nop instruction, etc.
 
 ### Add a function and redirect calls
 
-A slightly more advanced usage of `patches` allows us to add a function and redirect
+A slightly more advanced usage of `pypatches` allows us to add a function and redirect
 calls to some function, for example, malloc, to our own function instead. We'll patch
 a program that uses malloc to redirect those malloc calls to our function that will log
 all of the allocations it makes before proxying the malloc call.
@@ -92,9 +92,9 @@ Note: the below example is incomplete for now.
 
 ```python
 from pathlib import Path
-from patches.patcher import Patcher
-from patches.patches import AddCodePatch, ReplaceCodePatch
-from patches.types import AddressRange
+from pypatches.patcher import Patcher
+from pypatches.patches import AddCodePatch, ReplaceCodePatch
+from pypatches.types import AddressRange
 
 # Make a path to the binary
 bin = Path("./test-bin")
@@ -145,10 +145,10 @@ for caller in callers:
 
 ## API Reference
 
-::: patches.patcher
-::: patches.patches
-::: patches.binary_manager
-::: patches.types
-::: patches.error
-::: patches.util.cs_memop_eq
-::: patches.shellvm.wrapper
+::: pypatches.patcher
+::: pypatches.patches
+::: pypatches.binary_manager
+::: pypatches.types
+::: pypatches.error
+::: pypatches.util.cs_memop_eq
+::: pypatches.shellvm.wrapper
