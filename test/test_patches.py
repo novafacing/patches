@@ -191,7 +191,7 @@ def test_add_code_and_replace_code(bins) -> None:
 
     assert memcpy_call_addr is not None, "No memcpy call found"
 
-    def transformer(asm: str, tinfo: TransformInfo) -> str:
+    def transformer(asm: str, tinfo: TransformInfo, *args) -> str:
         """
         Transform the format string with the program context
 

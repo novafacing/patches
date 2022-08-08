@@ -1,3 +1,4 @@
+from logging import getLogger
 from test.fixtures import bins
 from angr.errors import SimTranslationError
 
@@ -12,6 +13,11 @@ def test_axssl_patch(bins) -> None:
     """
     Test the patch against axssl
     """
+    # Silence angr
+    getLogger("angr").setLevel("ERROR")
+    getLogger("pyvex").setLevel("DEBUG")
+    getLogger("claripy").setLevel("DEBUG")
+    getLogger("cle").setLevel("DEBUG")
     # Make a path to the binary
     bin = bins.get("axssl")
 
@@ -68,7 +74,7 @@ def test_axssl_patch(bins) -> None:
     patches = []
     for caller in callers:
 
-        def transformer(asm: str, tinfo: TransformInfo) -> str:
+        def transformer(asm: str, tinfo: TransformInfo, *args) -> str:
             offset_to = (
                 tinfo.label_offsets.get("reinterfaced_func")
                 - caller

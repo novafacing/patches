@@ -19,9 +19,10 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
 )
 from capstone import CsInsn
 from pysquishy.squishy import Squishy
+from pypatches.dynamic_info import DynamicInfo
 
 from pypatches.error import NoSectionError
-from pypatches.types import Code, TransformInfo
+from pypatches.types import Code, PreTransformInfo, TransformInfo
 
 logger = getLogger(__name__)
 
@@ -64,6 +65,7 @@ class BinaryManager:
     }
     writes: List[WriteOperation] = []
     code_to_add: Dict[str, Code] = {}
+    alignment: int = 0x1000
 
     def __init__(
         self,
@@ -71,6 +73,7 @@ class BinaryManager:
         cle_opts: Optional[Dict[str, bool]] = None,
         cfg_opts: Optional[Dict[str, bool]] = None,
         silence_angr_logs: bool = False,
+        alignment: int = 8,
     ) -> None:
         """
         Initialize the binary wrapper via one of several methods.
@@ -108,6 +111,8 @@ class BinaryManager:
         if silence_angr_logs:
             for logger_name in ("angr", "pyvex", "cle", "archinfo", "claripy"):
                 getLogger(logger_name).setLevel("ERROR")
+
+        self.alignment = alignment
 
         if self.path is None:
             self.blob = BytesIO(cast(bytes, binary))
@@ -180,7 +185,7 @@ class BinaryManager:
         self.blob.seek(section.addr_to_offset(vaddr))
         return self.blob.read(size)
 
-    def code(self, code: Code) -> bytes:
+    def code_to_bytes(self, code: Code) -> bytes:
         """
         Get the raw code from a code object
 
@@ -188,9 +193,6 @@ class BinaryManager:
         """
         if code.c_code:
             compiled_code = Squishy().compile(code.c_code)
-
-            disassembly = self.angr_project.arch.disasm(compiled_code, 0)
-            logger.info(f"Disassembly: {disassembly}")
 
             return compiled_code
 
@@ -220,10 +222,11 @@ class BinaryManager:
 
     def save(self, where: Path) -> None:
         """
-        Save the binary to where
+        Apply patches and save the binary to where
 
         :param where: Path to save the binary to
         """
+
         offsets = {}
         base_addr = None
 
@@ -232,19 +235,68 @@ class BinaryManager:
         # Add code to the binary if there is any to add
         if self.code_to_add:
             segment = Segment()
+
+            got_plt = self.lief_binary.get_section(".got.plt")
+
+            dynamic_addr = got_plt.virtual_address
+            link_map_addr = got_plt.virtual_address + 0x8
+            dl_resolve_addr = got_plt.virtual_address + 0x10
+
+            dynamic_info = DynamicInfo(dynamic_addr, link_map_addr, dl_resolve_addr)
+            ptinfo = PreTransformInfo(
+                dynamic_info=dynamic_info, new_code_segment_base=0
+            )
+
+            # Pre-generate the content with current (wrong probably)
+            # offsets
             content = b""
 
             for label, code in self.code_to_add.items():
+                code.pretransform(ptinfo)
                 logger.info(f"Adding code at label {label}: {code}")
                 offsets[label] = len(content)
-                content += self.code(code)
+                content += self.code_to_bytes(code)
 
+            # Create the segment with the (not correct, but probably the right size)
+            # code
             segment.content = list(content)
             segment.type = SEGMENT_TYPES.LOAD
-            segment.alignment = self.cle_binary.arch.instruction_alignment
-            segment.flags = SEGMENT_FLAGS(5)
+            segment.alignment = self.alignment
+            segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.X | SEGMENT_FLAGS.R)  # R/X
+
             new_segment = self.lief_binary.add(segment)
+
+            got_plt = self.lief_binary.get_section(".got.plt")
             base_addr = new_segment.virtual_address
+
+            dynamic_addr = got_plt.virtual_address
+            link_map_addr = got_plt.virtual_address + 0x8
+            dl_resolve_addr = got_plt.virtual_address + 0x10
+
+            dynamic_info = DynamicInfo(dynamic_addr, link_map_addr, dl_resolve_addr)
+            ptinfo = PreTransformInfo(
+                dynamic_info=dynamic_info, new_code_segment_base=base_addr
+            )
+
+            # Now regenerate the content with the actual offsets
+            content = b""
+
+            for label, code in self.code_to_add.items():
+                code.reset()
+                code.pretransform(ptinfo)
+                logger.info(f"Adding code at label {label}: {code}")
+                offsets[label] = len(content)
+                content += self.code_to_bytes(code)
+
+            # Set the content to the correct content
+            new_segment.content = list(content)
+
+            disassembly = self.angr_project.arch.disasm(content, base_addr)
+
+            logger.debug("Disassembly of added code:")
+
+            for disas_line in disassembly.splitlines():
+                logger.debug(f"{disas_line}")
 
             for label, offset in offsets.items():
                 offsets[label] += base_addr
@@ -258,6 +310,7 @@ class BinaryManager:
 
         tinfo = TransformInfo(offsets, text_section_adjust, self.lief_binary)
 
+        # Apply any writes to the binary
         for write in self.writes:
             if isinstance(write.where, str):
                 offset = offsets[write.where]
@@ -270,7 +323,11 @@ class BinaryManager:
                 data = write.data
             elif isinstance(write.data, Code):
                 write.data.transform(tinfo)
-                data = self.code(write.data)
+                data = self.code_to_bytes(write.data)
+                disassembly = self.angr_project.arch.disasm(data, offset)
+                logger.debug("Disassembly of code being written:")
+                for disas_line in disassembly.splitlines():
+                    logger.debug(f"{disas_line}")
             else:
                 data = write.data(offsets)
 
@@ -278,6 +335,7 @@ class BinaryManager:
 
             self.lief_binary.patch_address(offset, list(data))
 
+        # Save the binary to disk
         self.lief_binary.write(str(where))
 
     def asm(self, asm: str, vaddr: int) -> bytes:

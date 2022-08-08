@@ -170,6 +170,13 @@ class ReplaceCodePatch(CodePatch):
     address: int
 
 
+@dataclass
+class RuntimeResolverPatch(CodePatch):
+    """
+    Patch that adds a runtime resolver to the binary
+    """
+
+
 PatchType = Union[
     NopPatch,
     BranchPatch,

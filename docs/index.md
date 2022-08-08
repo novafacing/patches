@@ -150,5 +150,5 @@ for caller in callers:
 ::: pypatches.binary_manager
 ::: pypatches.types
 ::: pypatches.error
+::: pypatches.dynamic_info.py
 ::: pypatches.util.cs_memop_eq
-::: pypatches.shellvm.wrapper

@@ -4,9 +4,11 @@ Common types used by patches
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from lief import Binary
+
+from pypatches.dynamic_info import DynamicInfo
 
 
 class TYPECLASS(str, Enum):
@@ -88,6 +90,38 @@ class TransformInfo:
 
 
 @dataclass
+class PreTransformInfo:
+    """
+    Information container used for transforming code without context
+
+    :attribute dynamic_info: Information about the plt/dynamic information
+    """
+
+    dynamic_info: DynamicInfo
+    new_code_segment_base: int
+
+
+# A function that takes the code str (or bytes if raw) and the reloc and
+# dynamic info if available and returns a new code str (or bytes if raw)
+CodePreTransformFunctionType = Callable[
+    [str, PreTransformInfo],
+    str,
+]
+RawPreTransformFunctionType = Callable[
+    [bytes, PreTransformInfo],
+    bytes,
+]
+CodeTransformFunctionType = Callable[
+    [str, TransformInfo],
+    str,
+]
+RawTransformFunctionType = Callable[
+    [bytes, TransformInfo],
+    bytes,
+]
+
+
+@dataclass
 class Code:
     """
     Code either in assembly, C, or already assembled bytes
@@ -96,30 +130,66 @@ class Code:
     assembly: Optional[str] = None
     c_code: Optional[str] = None
     raw: Optional[bytes] = None
-    transform_asm: Optional[Callable[[str, TransformInfo], str]] = None
-    transform_c_code: Optional[Callable[[str, TransformInfo], str]] = None
-    transform_raw: Optional[Callable[[bytes, TransformInfo], bytes]] = None
+    transform_asm: Optional[CodeTransformFunctionType] = None
+    transform_c_code: Optional[CodeTransformFunctionType] = None
+    transform_raw: Optional[RawTransformFunctionType] = None
+    pretransform_asm: Optional[CodePreTransformFunctionType] = None
+    pretransform_c_code: Optional[CodePreTransformFunctionType] = None
+    pretransform_raw: Optional[RawPreTransformFunctionType] = None
+    dynamic_info: Optional[DynamicInfo] = None
+    original_assembly = None
+    original_c_code = None
+    original_raw = None
 
     def __post_init__(self) -> None:
         """
         Check that we got one of the above
         """
+        self.original_assembly = self.assembly
+        self.original_c_code = self.c_code
+        self.original_raw = self.raw
+
         if self.assembly is None and self.c_code is None and self.raw is None:
             raise ValueError("No code was provided.")
+
+    def reset(self) -> None:
+        """
+        Reset the code to its original state
+        """
+        self.assembly = self.original_assembly
+        self.c_code = self.original_c_code
+        self.raw = self.original_raw
+
+    def pretransform(self, tinfo: PreTransformInfo) -> None:
+        """
+        Call a transformer function if one is present that modifies the current code
+
+        :param tinfo: Pre-transformation information
+        """
+        if self.assembly is not None and self.pretransform_asm is not None:
+            self.assembly = self.pretransform_asm(self.assembly, tinfo)
+
+        if self.c_code is not None and self.pretransform_c_code is not None:
+            self.c_code = self.pretransform_c_code(self.c_code, tinfo)
+
+        if self.raw is not None and self.pretransform_raw is not None:
+            self.raw = self.pretransform_raw(self.raw, tinfo)
 
     def transform(self, tinfo: TransformInfo) -> None:
         """
         Call a transformer function if one is present that modifies the current code
         using the label to address mapping provided
 
-        :param offsets: A mapping of labels to addresses
+        :param tinfo: Transforminformation
         """
         if self.assembly is not None and self.transform_asm is not None:
-            self.assembly = self.transform_asm(self.assembly, tinfo)
+            self.assembly = self.transform_asm(self.assembly, tinfo, self.dynamic_info)
+
         if self.c_code is not None and self.transform_c_code is not None:
-            self.c_code = self.transform_c_code(self.c_code, tinfo)
+            self.c_code = self.transform_c_code(self.c_code, tinfo, self.dynamic_info)
+
         if self.raw is not None and self.transform_raw is not None:
-            self.raw = self.transform_raw(self.raw, tinfo)
+            self.raw = self.transform_raw(self.raw, tinfo, self.dynamic_info)
 
     @classmethod
     def build_c_code(
