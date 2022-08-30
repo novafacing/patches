@@ -66,6 +66,7 @@ class BinaryManager:
     writes: List[WriteOperation] = []
     code_to_add: Dict[str, Code] = {}
     alignment: int = 0x1000
+    data_to_add: Dict[str, bytes] = {}
 
     def __init__(
         self,
@@ -220,6 +221,20 @@ class BinaryManager:
 
         self.code_to_add[label] = code
 
+    def add_data(self, data: bytes, label: Optional[str] = None) -> None:
+        """
+        Add some data to the binary
+
+        :param data: The data to add
+        :param label: The label to associate with the data location
+        """
+        if label is None:
+            label = f"data_{len(self.data_to_add)}"
+
+        logger.info(f"Queueing data addition at label {label}: ({len(data)} bytes)")
+
+        self.data_to_add[label] = data
+
     def save(self, where: Path) -> None:
         """
         Apply patches and save the binary to where
@@ -234,17 +249,32 @@ class BinaryManager:
 
         # Add code to the binary if there is any to add
         if self.code_to_add:
-            segment = Segment()
 
             got_plt = self.lief_binary.get_section(".got.plt")
+            plt = self.lief_binary.get_section(".plt")
+            has_rela = (
+                self.lief_binary.get_section(".rela.dyn") is not None
+                or self.life_binary.get_section(".rela.plt") is not None
+            )
 
+            gotplt_addr = got_plt.virtual_address
+            plt_addr = plt.virtual_address
             dynamic_addr = got_plt.virtual_address
             link_map_addr = got_plt.virtual_address + 0x8
             dl_resolve_addr = got_plt.virtual_address + 0x10
 
-            dynamic_info = DynamicInfo(dynamic_addr, link_map_addr, dl_resolve_addr)
+            dynamic_info = DynamicInfo(
+                gotplt_addr,
+                plt_addr,
+                dynamic_addr,
+                link_map_addr,
+                dl_resolve_addr,
+                has_rela,
+            )
             ptinfo = PreTransformInfo(
-                dynamic_info=dynamic_info, new_code_segment_base=0
+                dynamic_info=dynamic_info,
+                new_code_segment_base=0,
+                new_data_segment_addrs=[0],
             )
 
             # Pre-generate the content with current (wrong probably)
@@ -257,6 +287,9 @@ class BinaryManager:
                 offsets[label] = len(content)
                 content += self.code_to_bytes(code)
 
+            segment = Segment()
+            data_segment = Segment()
+
             # Create the segment with the (not correct, but probably the right size)
             # code
             segment.content = list(content)
@@ -264,18 +297,37 @@ class BinaryManager:
             segment.alignment = self.alignment
             segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.X | SEGMENT_FLAGS.R)  # R/X
 
+            # Create a data segment for storing patch data
+            data_segment.content = list(b"\x00" * 0x1000)
+            data_segment.type = SEGMENT_TYPES.LOAD
+            data_segment.alignment = self.alignment
+            data_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.R | SEGMENT_FLAGS.W)
+
             new_segment = self.lief_binary.add(segment)
+            new_data_segment = self.lief_binary.add(data_segment)
 
-            got_plt = self.lief_binary.get_section(".got.plt")
             base_addr = new_segment.virtual_address
+            got_plt = self.lief_binary.get_section(".got.plt")
+            plt = self.lief_binary.get_section(".plt")
 
+            gotplt_addr = got_plt.virtual_address
+            plt_addr = plt.virtual_address
             dynamic_addr = got_plt.virtual_address
             link_map_addr = got_plt.virtual_address + 0x8
             dl_resolve_addr = got_plt.virtual_address + 0x10
 
-            dynamic_info = DynamicInfo(dynamic_addr, link_map_addr, dl_resolve_addr)
+            dynamic_info = DynamicInfo(
+                gotplt_addr,
+                plt_addr,
+                dynamic_addr,
+                link_map_addr,
+                dl_resolve_addr,
+                has_rela,
+            )
             ptinfo = PreTransformInfo(
-                dynamic_info=dynamic_info, new_code_segment_base=base_addr
+                dynamic_info=dynamic_info,
+                new_code_segment_base=base_addr,
+                new_data_segment_addrs=[new_data_segment.virtual_address],
             )
 
             # Now regenerate the content with the actual offsets
@@ -308,7 +360,13 @@ class BinaryManager:
         # the .text section address changes on disk, so we need to perform a relocation
         # based on the new offset of the text section
 
-        tinfo = TransformInfo(offsets, text_section_adjust, self.lief_binary)
+        tinfo = TransformInfo(
+            offsets,
+            text_section_adjust,
+            self.lief_binary,
+            new_segment.virtual_address,
+            [new_data_segment.virtual_address],
+        )
 
         # Apply any writes to the binary
         for write in self.writes:

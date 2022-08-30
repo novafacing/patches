@@ -7,7 +7,6 @@ ranges or anything like that to allow the tests to be built on various systems a
 tested on them as well
 """
 
-from ast import main
 from subprocess import run
 from typing import Optional, Tuple, cast
 from test.fixtures import BINARIES_DIR, bins

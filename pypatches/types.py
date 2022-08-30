@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from lief import Binary
 
 from pypatches.dynamic_info import DynamicInfo
+from pypatches.util.libs.libs import get_lib
 
 
 class TYPECLASS(str, Enum):
@@ -87,6 +88,8 @@ class TransformInfo:
     label_offsets: Dict[str, int]
     text_offset: int
     lief_binary: Binary
+    new_code_segment_addr: int
+    new_data_segment_addrs: List[int]
 
 
 @dataclass
@@ -99,6 +102,7 @@ class PreTransformInfo:
 
     dynamic_info: DynamicInfo
     new_code_segment_base: int
+    new_data_segment_addrs: List[int]
 
 
 # A function that takes the code str (or bytes if raw) and the reloc and
@@ -195,7 +199,7 @@ class Code:
     def build_c_code(
         cls,
         body: str,
-        getreg_helper: bool = True,
+        helpers: Optional[List[str]] = None,
         includes: Optional[List[str]] = None,
         extra_code: Optional[str] = None,
     ) -> str:
@@ -204,9 +208,8 @@ class Code:
 
         :param body: The body of the code to build, which will be wrapped in
             a main function and compiled.
-        :param getreg_helper: Whether to include the getreg helper macro that
-            can be used by calling `getreg(variable_name, reg_name)` in the body
-            of the function
+        :param helpers: A list of filenames or paths to include into the program as helpers from
+            `libs` like: `['liblink.c', 'libutil.c', 'libgetreg.c']
         :param includes: A list of include files like `["#include <stdint.h>", ...]`
         """
         code = ""
@@ -218,12 +221,10 @@ class Code:
         if extra_code is not None:
             code += extra_code + "\n"
 
-        if getreg_helper:
-            code += (
-                """#define getreg(dest, src)  \\\n"""
-                """    register long long dest __asm__ (#src); \\\n"""
-                """    __asm__ ("" :"=r"(dest));\n"""
-            )
+        if helpers is not None:
+            for helper in helpers:
+                lib_text = get_lib(helper)
+                code += f"\n{lib_text}\n"
 
         code += """int main() {\n"""
         code += body + "\n"
