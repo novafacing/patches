@@ -4,55 +4,11 @@ Common types used by patches
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple
 
 from lief import Binary
 
 from pypatches.dynamic_info import DynamicInfo
-from pypatches.util.libs.libs import get_lib
-
-
-class TYPECLASS(str, Enum):
-    """
-    An enum representing various classes a type may be a member of
-    """
-
-    BASIC = "BASIC"
-    POINTER = "POINTER"
-    STRUCT = "STRUCT"
-    UNION = "UNION"
-    FUNCTION = "FUNCTION"
-
-
-@dataclass
-class Type:
-    """
-    Type representing a Type in a (C/ASM) type language
-    """
-
-    label: str
-    size: int
-    signed: bool = False
-    typeclass: TYPECLASS = TYPECLASS.BASIC
-    fields: List[Tuple[Optional[str], "Type"]] = field(default_factory=list)
-    base: Optional["Type"] = None
-
-
-@dataclass
-class Value(Type):
-    """
-    Value of a given type, where the value is None if the type is a pointer
-    """
-
-    value: Optional[bytes] = None
-
-
-@dataclass
-class ReturnValue(Value):
-    """
-    A return value, which can be of any `Type` and its
-    value
-    """
 
 
 @dataclass(frozen=True)

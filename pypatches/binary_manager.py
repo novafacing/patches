@@ -235,7 +235,23 @@ class BinaryManager:
 
         self.data_to_add[label] = data
 
-    def save(self, where: Path) -> None:
+    def apply(self) -> None:
+        """
+        Apply patches
+        """
+        offsets = {}
+        base_addr = None
+
+        total_code_size = 0
+
+        for code in self.code_to_add:
+            code.dummy()
+            ti = TransformInfo()
+            compiled = code.compile(
+                "dummy",
+            )
+
+    def save_old(self, where: Path) -> None:
         """
         Apply patches and save the binary to where
 
