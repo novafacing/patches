@@ -15,7 +15,7 @@ class CCode(Code):
     C Code container
     """
 
-    def compile(self, label: str, info: TransformInfo) -> bytes:
+    def compile(self, label: str, info: Optional[TransformInfo] = None) -> bytes:
         """
         Compile the C code
         """

@@ -2,9 +2,8 @@
 Superclass for all code types
 """
 
-from multiprocessing import dummy
 from pypatches.transform.info import TransformInfo
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Callable, Optional, Union
 
 
@@ -71,7 +70,6 @@ class Code(ABC):
         """
         self.code = self.original_code
 
-    @abstractmethod
     def dummy(self) -> None:
         """
         Generate valid dummy code to determine the size required to fit this code in the
@@ -107,7 +105,6 @@ class Code(ABC):
         """
         self.code = self.dummy_transformer(self.code)
 
-    @abstractmethod
     def build(self, info: TransformInfo) -> None:
         """
         Build the code into the final version that can be built with the binary context
@@ -118,15 +115,13 @@ class Code(ABC):
         """
         self.code = self.build_transformer(info, self.code)
 
-    @abstractmethod
     def post_build(self, info: TransformInfo) -> bytes:
         """
         Modify the built code after compilation
         """
         return self.post_transformer(info, self.code)
 
-    @abstractmethod
-    def compile(self, label: str, info: TransformInfo) -> bytes:
+    def compile(self, label: str, info: Optional[TransformInfo] = None) -> bytes:
         """
         Compile or assemble the code (or do not change it if raw)
         """

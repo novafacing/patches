@@ -22,7 +22,8 @@ from pysquishy.squishy import Squishy
 from pypatches.dynamic_info import DynamicInfo
 
 from pypatches.error import NoSectionError
-from pypatches.types import Code, PreTransformInfo, TransformInfo
+from pypatches.code.code import Code
+from pypatches.transform.info import TransformInfo
 
 logger = getLogger(__name__)
 
@@ -186,26 +187,6 @@ class BinaryManager:
         self.blob.seek(section.addr_to_offset(vaddr))
         return self.blob.read(size)
 
-    def code_to_bytes(self, code: Code) -> bytes:
-        """
-        Get the raw code from a code object
-
-        :param code: The code object
-        """
-        if code.c_code:
-            compiled_code = Squishy().compile(code.c_code)
-
-            return compiled_code
-
-        if code.assembly:
-            # TODO: Handle PC-relative assembly by making this a callable taking the addr
-            return self.asm(code.assembly, 0)
-
-        if code.raw:
-            return code.raw
-
-        raise ValueError("Code object has no code or assembly")
-
     def add_code(self, code: Code, label: Optional[str] = None) -> None:
         """
         Mark some code as being added on next save
@@ -239,17 +220,58 @@ class BinaryManager:
         """
         Apply patches
         """
-        offsets = {}
-        base_addr = None
+        # Offsets is filled in twice:
+        # - first time fills in offset in the new section
+        # - second time fills in offset from base address
+        transform_info = TransformInfo(self.lief_binary, self.angr_project)
 
-        total_code_size = 0
+        transform_info.code_size = 0
+        transform_info.data_size = 0
 
-        for code in self.code_to_add:
+        # Figure out how much space we need for code
+        for _, code in self.code_to_add.items():
             code.dummy()
-            ti = TransformInfo()
+
             compiled = code.compile(
                 "dummy",
             )
+
+            code.reset()
+
+            transform_info.code_size += len(compiled)
+
+        for _, data in self.data_to_add.items():
+            transform_info.data_size += len(data)
+
+        # Round up code and data sizes to the next multiple of self.alignment
+        transform_info.code_size = (
+            transform_info.code_size + (self.alignment - 1)
+        ) & ~(self.alignment - 1)
+
+        transform_info.data_size = (
+            transform_info.data_size + (self.alignment - 1)
+        ) & ~(self.alignment - 1)
+
+        # Create new sections
+        if transform_info.code_size > 0:
+            new_code_segment = Segment()
+            new_code_segment.content = list(b"\x00" * transform_info.code_size)
+            new_code_segment.type = SEGMENT_TYPES.LOAD
+            new_code_segment.alignment = self.alignment
+            new_code_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.X | SEGMENT_FLAGS.R)
+            new_code_segment = self.lief_binary.add(new_code_segment)
+            transform_info.code_base = new_code_segment.virtual_address
+
+        if transform_info.data_size > 0:
+            new_data_segment = Segment()
+            new_data_segment.content = list(b"\x00" * transform_info.data_size)
+            new_data_segment.type = SEGMENT_TYPES.LOAD
+            new_data_segment.alignment = self.alignment
+            new_data_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.R | SEGMENT_FLAGS.W)
+            new_data_segment = self.lief_binary.add(new_data_segment)
+            transform_info.data_base = new_data_segment.virtual_address
+
+        # Now we need to compile for real, we will add data first
 
     def save_old(self, where: Path) -> None:
         """
