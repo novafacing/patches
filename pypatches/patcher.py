@@ -67,11 +67,15 @@ class Patcher:
         patch_dispatch_func = getattr(self, patch_dispatch_func_name)
         patch_dispatch_func(patch)
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Union[str, Path]) -> None:
         """
         Save the patched binary to the given path
         """
+        if isinstance(path, str):
+            path = Path(path)
+
         self.binary.save(path)
+
         path.chmod(0o755)
 
     def apply_nop_patch(self, patch: NopPatch) -> None:
@@ -141,7 +145,7 @@ class Patcher:
         """
         Apply a data patch to the target binary
         """
-        raise NotImplementedError("Data patches are not supported.")
+        self.binary.add_data(patch.data, patch.label)
 
     def apply_add_code_patch(self, patch: AddCodePatch) -> None:
         """

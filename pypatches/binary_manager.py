@@ -275,7 +275,8 @@ class BinaryManager:
                 "dummy",
             )
 
-            aligned_size = self.align(len(compiled), self.alignment)
+            # TODO: There might be a smarter way but we don't really prioritize size
+            aligned_size = self.align(len(compiled), self.alignment) * 2
 
             transform_info.code_offsets[label] = transform_info.code_size
             transform_info.code_size += aligned_size
@@ -353,12 +354,17 @@ class BinaryManager:
 
             if isinstance(write.data, bytes):
                 data = write.data
+
             elif isinstance(write.data, Code):
+
                 write.data.reset()
                 write.data.build(transform_info)
                 data = write.data.compile(cast(str, write.data.label), transform_info)
+
                 disassembly = self.angr_project.arch.disasm(data, offset)
+
                 logger.debug(f"Disassembly of data for label {write.data.label}:")
+
                 for disas_line in disassembly.splitlines():
                     logger.debug(f"  {disas_line}")
             else:
