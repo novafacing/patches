@@ -10,8 +10,8 @@ data patches)
 
 from dataclasses import InitVar, dataclass, field
 from typing import List, Optional, Set, Union
-
-from pypatches.types import AddressRange, Code, ReturnValue, Value
+from pypatches.code.code import Code
+from pypatches.address_range import AddressRange
 
 
 @dataclass
@@ -77,7 +77,7 @@ class SkipAndReturnPatch:
     """
 
     caller_address: int
-    return_value: ReturnValue
+    return_value: int
 
 
 @dataclass
@@ -136,7 +136,7 @@ class DataPatch:
     Patch that adds some data with some protections
     """
 
-    data: Value
+    data: bytes
     read: bool = True
     write: bool = False
     exec: bool = False
@@ -167,7 +167,7 @@ class ReplaceCodePatch(CodePatch):
     Patch that replaces some code with some other code
     """
 
-    address: int
+    address: Optional[int] = None
 
 
 @dataclass

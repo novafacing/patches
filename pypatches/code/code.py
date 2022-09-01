@@ -6,6 +6,10 @@ from pypatches.transform.info import TransformInfo
 from abc import ABC
 from typing import Callable, Optional, Union
 
+default_dummy_transformer = lambda b: b
+default_build_transformer = lambda t, b: b
+default_post_transformer = lambda t, b: b
+
 
 class Code(ABC):
     """
@@ -14,10 +18,7 @@ class Code(ABC):
 
     code: Union[str, bytes]
     original_code: Union[str, bytes]
-
-    default_dummy_transformer = lambda b: b
-    default_build_transformer = lambda t, b: b
-    default_post_transformer = lambda t, b: b
+    label: Optional[str] = None
 
     def __init__(
         self,
@@ -49,19 +50,19 @@ class Code(ABC):
         self.dummy_transformer = (
             dummy_transformer
             if dummy_transformer is not None
-            else self.default_dummy_transformer
+            else default_dummy_transformer
         )
 
         self.build_transformer = (
             build_transformer
             if build_transformer is not None
-            else self.default_build_transformer
+            else default_build_transformer
         )
 
         self.post_transformer = (
             post_transformer
             if post_transformer is not None
-            else self.default_post_transformer
+            else default_post_transformer
         )
 
     def reset(self) -> None:

@@ -7,12 +7,16 @@ ranges or anything like that to allow the tests to be built on various systems a
 tested on them as well
 """
 
+from distutils.command.build import build
 from subprocess import run
 from typing import Optional, Tuple, cast
+from pypatches.address_range import AddressRange
 from test.fixtures import BINARIES_DIR, bins
 from pypatches.patches import AddCodePatch, NopPatch, ReplaceCodePatch
 from pypatches.patcher import Patcher
-from pypatches.types import AddressRange, Code, TransformInfo
+from pypatches.code.code import Code
+from pypatches.code.asm import ASMCode
+from pypatches.transform.info import TransformInfo
 
 from angr import Block, Project
 from angr.knowledge_plugins.functions.function import Function
@@ -27,6 +31,10 @@ from capstone import CS_OP_REG, CS_OP_MEM
 from ptpython.repl import embed
 
 from pypatches.util.cs_memop_eq import cs_memop_eq
+from pypatches.code.c_code import build_c_code
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 def test_nop_patch(bins) -> None:
@@ -40,20 +48,14 @@ def test_nop_patch(bins) -> None:
     mutate_func = cast(
         Function, proj.kb.functions.get(proj.loader.find_symbol("mutate").rebased_addr)
     )
+
     main_func = cast(
         Function, proj.kb.functions.get(proj.loader.find_symbol("main").rebased_addr)
     )
-    vrf = proj.analyses.VariableRecoveryFast(main_func)
-    vm = vrf.variable_manager[main_func.addr]
 
     ranges = set()
     for block in mutate_func.blocks:
-        if block.vex.jumpkind == "Ijk_Call" and any(
-            map(
-                lambda a: proj.kb.functions.get(a).name == "memcpy",
-                block.vex.constant_jump_targets,
-            )
-        ):
+        if block.vex.jumpkind == "Ijk_Call":
             ranges.add(
                 AddressRange(
                     block.disassembly.insns[-1].address,
@@ -61,6 +63,8 @@ def test_nop_patch(bins) -> None:
                     + block.disassembly.insns[-1].size,
                 )
             )
+
+    assert ranges, "No memcpy calls found in mutate function"
 
     assign_ret_source = None
     try:
@@ -118,18 +122,16 @@ def test_add_code_patch(bins) -> None:
     assert print_twice is not None
     p = Patcher(print_twice)
     acp = AddCodePatch(
-        Code(
-            c_code=Code.build_c_code(
-                """
-                getreg(arg0, rdi);
-                getreg(arg1, rsi);
-                getreg(arg2, rdx);
-                for (size_t i = 0; i < arg2; i++) {
-                    ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
-                }""",
-                getreg_helper=True,
-                includes=["#include <stdint.h>", "#include <stddef.h>"],
-            )
+        build_c_code(
+            """
+            getreg(arg0, rdi);
+            getreg(arg1, rsi);
+            getreg(arg2, rdx);
+            for (size_t i = 0; i < arg2; i++) {
+                ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
+            }""",
+            helpers=["libgetreg.c"],
+            includes=["#include <stdint.h>", "#include <stddef.h>"],
         ),
         label="retone",
     )
@@ -141,7 +143,7 @@ def test_add_code_patch(bins) -> None:
         auto_load_libs=False,
     )
     for segment in proj.loader.main_object.segments:
-        if segment.vaddr == 0xD000:
+        if segment.vaddr == 0xF000:
             break
     else:
         raise AssertionError("Could not find expected code segment at 0xd000!")
@@ -157,57 +159,76 @@ def test_add_code_and_replace_code(bins) -> None:
     assert print_twice is not None
     p = Patcher(print_twice)
     acp = AddCodePatch(
-        Code(
-            c_code=Code.build_c_code(
-                """
-                getreg(arg0, rdi);
-                getreg(arg1, rsi);
-                getreg(arg2, rdx);
-                // Memcpy the data backward
-                for (size_t i = 0; i < arg2; i++) {
-                    ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
-                }""",
-                getreg_helper=True,
-                includes=["#include <stdint.h>", "#include <stddef.h>"],
-            )
+        build_c_code(
+            """
+            getreg(arg0, rdi);
+            getreg(arg1, rsi);
+            getreg(arg2, rdx);
+            // Memcpy the data backward
+            for (size_t i = 0; i < arg2; i++) {
+                ((char *) arg0)[i] = ((char *) arg1)[arg2 - i - 1];
+            }""",
+            helpers=["libgetreg.c"],
+            includes=["#include <stdint.h>", "#include <stddef.h>"],
         ),
         label="rev_memcpy",
     )
-    proj = p.binary.angr_project
-    mutate_func = cast(
-        Function, proj.kb.functions.get(proj.loader.find_symbol("mutate").rebased_addr)
-    )
-    memcpy_call_addr = None
 
-    for block in mutate_func.blocks:
-        if block.vex.jumpkind == "Ijk_Call" and any(
-            map(
-                lambda a: proj.kb.functions.get(a).name == "memcpy",
-                block.vex.constant_jump_targets,
-            )
-        ):
-            memcpy_call_addr = block.instruction_addrs[-1]
+    def address_fixup(tinfo: TransformInfo) -> int:
+        """
+        Figure out where memcpy is called and use that as the address to write our
+        code to
 
-    assert memcpy_call_addr is not None, "No memcpy call found"
+        :param tinfo: The transform info object after segment modification
+        """
+        proj = tinfo.angr_project
+        mutate_func = cast(
+            Function,
+            proj.kb.functions.get(proj.loader.find_symbol("mutate").rebased_addr),
+        )
+        assert mutate_func is not None, "No mutate function found"
+        memcpy_call_addr = None
 
-    def transformer(asm: str, tinfo: TransformInfo, *args) -> str:
+        memcpy_call_addr = list(mutate_func.blocks)[-2].disassembly.insns[-1].address
+
+        assert memcpy_call_addr is not None, "No memcpy call found"
+
+        logger.info(f"Found memcpy call at {memcpy_call_addr:#0x}")
+
+        return memcpy_call_addr
+
+    def transformer(tinfo: TransformInfo, asm: str) -> str:
         """
         Transform the format string with the program context
 
         :param asm: The original asm string
         :param tinfo: The program context information
         """
-        offset_to = (
-            tinfo.label_offsets.get("rev_memcpy") - memcpy_call_addr - tinfo.text_offset
+        proj = tinfo.angr_project
+        mutate_func = cast(
+            Function,
+            proj.kb.functions.get(proj.loader.find_symbol("mutate").rebased_addr),
         )
+        assert mutate_func is not None, "No mutate function found"
+        memcpy_call_addr = None
+
+        memcpy_call_addr = list(mutate_func.blocks)[-2].disassembly.insns[-1].address
+
+        assert memcpy_call_addr is not None, "No memcpy call found"
+
+        logger.info(f"Found memcpy call at {memcpy_call_addr:#0x}")
+
+        offset_to = tinfo.code_offsets.get("rev_memcpy") - memcpy_call_addr
+
         return asm.format(rev_memcpy=f"{offset_to:#0x}")
 
     rcp = ReplaceCodePatch(
-        Code(
-            assembly="call {rev_memcpy};",
-            transform_asm=transformer,
+        ASMCode(
+            code="call {rev_memcpy};",
+            dummy_transformer=lambda asm: asm.format(rev_memcpy=0),
+            build_transformer=transformer,
         ),
-        address=memcpy_call_addr,
+        address=address_fixup,
     )
 
     p.apply(acp)

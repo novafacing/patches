@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from logging import getLogger
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Callable, Dict, List, Optional, Union, cast
 
 from angr import Project
@@ -18,8 +19,7 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
     Segment,
 )
 from capstone import CsInsn
-from pysquishy.squishy import Squishy
-from pypatches.dynamic_info import DynamicInfo
+from pypatches import transform
 
 from pypatches.error import NoSectionError
 from pypatches.code.code import Code
@@ -40,7 +40,7 @@ class WriteOperation:
     """
 
     data: Union[bytes, Callable[[Dict[str, int]], bytes], Code]
-    where: Union[str, int]
+    where: Union[str, int, Callable[[TransformInfo], int]]
 
 
 class BinaryManager:
@@ -118,52 +118,84 @@ class BinaryManager:
 
         if self.path is None:
             self.blob = BytesIO(cast(bytes, binary))
-            self.lief_binary = parse(binary)
-            self.angr_project = Project(
-                self.blob,
-                main_opts={"base_addr": self.lief_binary.imagebase},
-                load_options=self.cle_opts,
-            )
-            self.angr_project.analyses.CFGFast(  # type: ignore
-                **self.cfg_opts,
-            )
-
-            if self.angr_project.loader.main_object is None:
-                raise FileNotFoundError(
-                    f"Requested binary {self.path} "
-                    "was not found or could not be opened."
-                )
-
-            self.cle_binary = self.angr_project.loader.main_object
         else:
             self.blob = BytesIO(self.path.read_bytes())
-            self.lief_binary = parse(str(self.path))
-            self.angr_project = Project(
-                str(self.path),
-                main_opts={"base_addr": self.lief_binary.imagebase},
-                load_options=self.cle_opts,
-            )
-            self.angr_project.analyses.CFGFast(  # type: ignore
-                **self.cfg_opts,
+
+        self.load_lief_binary()
+        self.load_angr_project()
+
+    def reload_blob_from_lief(self) -> None:
+        """
+        Reload the blob from the current LIEF binary
+        """
+        tempfile = NamedTemporaryFile(delete=False)
+        temppath = Path(tempfile.name)
+
+        try:
+            tempfile.close()
+            self.lief_binary.write(str(temppath.resolve()))
+            self.blob = BytesIO(temppath.read_bytes())
+        except Exception as e:
+            raise e
+        finally:
+            temppath.unlink(missing_ok=True)
+
+        self.load_lief_binary()
+        self.load_angr_project()
+
+    def load_lief_binary(self) -> None:
+        """
+        Load the binary into LIEF
+        """
+        self.lief_binary = parse(self.blob.getbuffer())
+
+    def load_angr_project(self) -> None:
+        """
+        Load the angr project from the binary blob
+        """
+        self.angr_project = Project(
+            self.blob,
+            main_opts={"base_addr": self.lief_binary.imagebase},
+            load_options=self.cle_opts,
+        )
+        self.angr_project.analyses.CFGFast(  # type: ignore
+            **self.cfg_opts,
+        )
+
+        if self.angr_project.loader.main_object is None:
+            raise FileNotFoundError(
+                f"Requested binary {self.path} " "was not found or could not be opened."
             )
 
-            if self.angr_project.loader.main_object is None:
-                raise FileNotFoundError(
-                    f"Requested binary {self.path} "
-                    "was not found or could not be opened."
-                )
+        self.cle_binary = self.angr_project.loader.main_object
 
-            self.cle_binary = self.angr_project.loader.main_object
+    def align(
+        self,
+        address: int,
+        alignment: Optional[int] = None,
+    ) -> int:
+        """
+        Align an address to the specified alignment. If no alignment is
+        provided, the default alignment will be used.
+        """
+        if alignment is None:
+            alignment = self.alignment
+
+        address = (address + (alignment - 1)) & ~(alignment - 1)
+
+        return address
 
     def write(
         self,
-        where: Union[int, str],
+        where: Union[int, str, Callable[[TransformInfo], int]],
         data: Union[bytes, Callable[[Dict[str, int]], bytes], Code],
     ) -> None:
         """
         Write data to the binary at the given virtual address
 
-        :param where: Either an address or a label that will resolve to an address
+        :param where: Either an address or a label that will resolve to an address, or
+            a function that takes the transform info after segment modification and
+            returns an address
         :param data: The bytes or a function that takes a dictionary of labels
             and addresses and returns bytes to write to the patch
         """
@@ -200,6 +232,8 @@ class BinaryManager:
 
         logger.info(f"Queueing code addition at label {label}: {code}")
 
+        code.label = label
+
         self.code_to_add[label] = code
 
     def add_data(self, data: bytes, label: Optional[str] = None) -> None:
@@ -227,21 +261,29 @@ class BinaryManager:
 
         transform_info.code_size = 0
         transform_info.data_size = 0
+        transform_info.all_data = b""
+        transform_info.data_offsets = {}
+        transform_info.code_offsets = {}
 
         # Figure out how much space we need for code
-        for _, code in self.code_to_add.items():
+        # Each code patch is dummy compiled and placed in a subsection that is aligned
+        # to the alignment of the binary.
+        for label, code in self.code_to_add.items():
+            code.reset()
             code.dummy()
-
             compiled = code.compile(
                 "dummy",
             )
 
-            code.reset()
+            aligned_size = self.align(len(compiled), self.alignment)
 
-            transform_info.code_size += len(compiled)
+            transform_info.code_offsets[label] = transform_info.code_size
+            transform_info.code_size += aligned_size
 
-        for _, data in self.data_to_add.items():
+        for label, data in self.data_to_add.items():
+            transform_info.data_offsets[label] = len(data)
             transform_info.data_size += len(data)
+            transform_info.all_data += data
 
         # Round up code and data sizes to the next multiple of self.alignment
         transform_info.code_size = (
@@ -253,6 +295,23 @@ class BinaryManager:
         ) & ~(self.alignment - 1)
 
         # Create new sections
+
+        if transform_info.data_size > 0:
+            new_data_segment = Segment()
+            new_data_segment.content = list(transform_info.all_data)
+            new_data_segment.type = SEGMENT_TYPES.LOAD
+            new_data_segment.alignment = self.alignment
+            new_data_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.R | SEGMENT_FLAGS.W)
+            new_data_segment = self.lief_binary.add(new_data_segment)
+
+            transform_info.data_base = new_data_segment.virtual_address
+
+            # Fix up offsets to they point to the actual address
+            for label, addr in transform_info.data_offsets.items():
+                transform_info.data_offsets[label] = (
+                    cast(int, transform_info.data_base) + addr
+                )
+
         if transform_info.code_size > 0:
             new_code_segment = Segment()
             new_code_segment.content = list(b"\x00" * transform_info.code_size)
@@ -260,179 +319,65 @@ class BinaryManager:
             new_code_segment.alignment = self.alignment
             new_code_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.X | SEGMENT_FLAGS.R)
             new_code_segment = self.lief_binary.add(new_code_segment)
+
             transform_info.code_base = new_code_segment.virtual_address
 
-        if transform_info.data_size > 0:
-            new_data_segment = Segment()
-            new_data_segment.content = list(b"\x00" * transform_info.data_size)
-            new_data_segment.type = SEGMENT_TYPES.LOAD
-            new_data_segment.alignment = self.alignment
-            new_data_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.R | SEGMENT_FLAGS.W)
-            new_data_segment = self.lief_binary.add(new_data_segment)
-            transform_info.data_base = new_data_segment.virtual_address
+            # Fix up offsets to they point to the actual address
+            for label, addr in transform_info.code_offsets.items():
+                transform_info.code_offsets[label] = (
+                    cast(int, transform_info.code_base) + addr
+                )
 
-        # Now we need to compile for real, we will add data first
-
-    def save_old(self, where: Path) -> None:
-        """
-        Apply patches and save the binary to where
-
-        :param where: Path to save the binary to
-        """
-
-        offsets = {}
-        base_addr = None
-
-        text_section_offset = self.lief_binary.get_section(".text").offset
-
-        # Add code to the binary if there is any to add
-        if self.code_to_add:
-
-            got_plt = self.lief_binary.get_section(".got.plt")
-            plt = self.lief_binary.get_section(".plt")
-            has_rela = (
-                self.lief_binary.get_section(".rela.dyn") is not None
-                or self.life_binary.get_section(".rela.plt") is not None
-            )
-
-            gotplt_addr = got_plt.virtual_address
-            plt_addr = plt.virtual_address
-            dynamic_addr = got_plt.virtual_address
-            link_map_addr = got_plt.virtual_address + 0x8
-            dl_resolve_addr = got_plt.virtual_address + 0x10
-
-            dynamic_info = DynamicInfo(
-                gotplt_addr,
-                plt_addr,
-                dynamic_addr,
-                link_map_addr,
-                dl_resolve_addr,
-                has_rela,
-            )
-            ptinfo = PreTransformInfo(
-                dynamic_info=dynamic_info,
-                new_code_segment_base=0,
-                new_data_segment_addrs=[0],
-            )
-
-            # Pre-generate the content with current (wrong probably)
-            # offsets
-            content = b""
-
+            # Queue writes for code
             for label, code in self.code_to_add.items():
-                code.pretransform(ptinfo)
-                logger.info(f"Adding code at label {label}: {code}")
-                offsets[label] = len(content)
-                content += self.code_to_bytes(code)
+                self.writes.append(WriteOperation(code, label))
 
-            segment = Segment()
-            data_segment = Segment()
+        # Reload the angr project to get the new sections
+        self.reload_blob_from_lief()
+        transform_info.lief_binary = self.lief_binary
+        transform_info.angr_project = self.angr_project
 
-            # Create the segment with the (not correct, but probably the right size)
-            # code
-            segment.content = list(content)
-            segment.type = SEGMENT_TYPES.LOAD
-            segment.alignment = self.alignment
-            segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.X | SEGMENT_FLAGS.R)  # R/X
-
-            # Create a data segment for storing patch data
-            data_segment.content = list(b"\x00" * 0x1000)
-            data_segment.type = SEGMENT_TYPES.LOAD
-            data_segment.alignment = self.alignment
-            data_segment.flags = SEGMENT_FLAGS(SEGMENT_FLAGS.R | SEGMENT_FLAGS.W)
-
-            new_segment = self.lief_binary.add(segment)
-            new_data_segment = self.lief_binary.add(data_segment)
-
-            base_addr = new_segment.virtual_address
-            got_plt = self.lief_binary.get_section(".got.plt")
-            plt = self.lief_binary.get_section(".plt")
-
-            gotplt_addr = got_plt.virtual_address
-            plt_addr = plt.virtual_address
-            dynamic_addr = got_plt.virtual_address
-            link_map_addr = got_plt.virtual_address + 0x8
-            dl_resolve_addr = got_plt.virtual_address + 0x10
-
-            dynamic_info = DynamicInfo(
-                gotplt_addr,
-                plt_addr,
-                dynamic_addr,
-                link_map_addr,
-                dl_resolve_addr,
-                has_rela,
-            )
-            ptinfo = PreTransformInfo(
-                dynamic_info=dynamic_info,
-                new_code_segment_base=base_addr,
-                new_data_segment_addrs=[new_data_segment.virtual_address],
-            )
-
-            # Now regenerate the content with the actual offsets
-            content = b""
-
-            for label, code in self.code_to_add.items():
-                code.reset()
-                code.pretransform(ptinfo)
-                logger.info(f"Adding code at label {label}: {code}")
-                offsets[label] = len(content)
-                content += self.code_to_bytes(code)
-
-            # Set the content to the correct content
-            new_segment.content = list(content)
-
-            disassembly = self.angr_project.arch.disasm(content, base_addr)
-
-            logger.debug("Disassembly of added code:")
-
-            for disas_line in disassembly.splitlines():
-                logger.debug(f"{disas_line}")
-
-            for label, offset in offsets.items():
-                offsets[label] += base_addr
-
-        new_text_section_offset = self.lief_binary.get_section(".text").offset
-        text_section_adjust = new_text_section_offset - text_section_offset
-
-        # After adding code, the program headers move to the end of the file and
-        # the .text section address changes on disk, so we need to perform a relocation
-        # based on the new offset of the text section
-
-        tinfo = TransformInfo(
-            offsets,
-            text_section_adjust,
-            self.lief_binary,
-            new_segment.virtual_address,
-            [new_data_segment.virtual_address],
-        )
-
-        # Apply any writes to the binary
         for write in self.writes:
             if isinstance(write.where, str):
-                offset = offsets[write.where]
-            else:
+                offset = transform_info.data_offsets.get(
+                    write.where, transform_info.code_offsets.get(write.where, None)
+                )
+                if offset is None:
+                    raise KeyError(f"Could not find offset for label {write.where}")
+
+            elif isinstance(write.where, int):
                 offset = write.where
 
-            offset += text_section_adjust
+            else:
+                offset = write.where(transform_info)
 
             if isinstance(write.data, bytes):
                 data = write.data
             elif isinstance(write.data, Code):
-                write.data.transform(tinfo)
-                data = self.code_to_bytes(write.data)
+                write.data.reset()
+                write.data.build(transform_info)
+                data = write.data.compile(cast(str, write.data.label), transform_info)
                 disassembly = self.angr_project.arch.disasm(data, offset)
-                logger.debug("Disassembly of code being written:")
+                logger.debug(f"Disassembly of data for label {write.data.label}:")
                 for disas_line in disassembly.splitlines():
-                    logger.debug(f"{disas_line}")
+                    logger.debug(f"  {disas_line}")
             else:
-                data = write.data(offsets)
+                data = write.data(transform_info.code_offsets)
 
-            logger.info(f"Writing {len(data)} bytes at {offset:#0x}")
-
+            logger.info(f"Writing {len(data)} bytes to {offset:#0x}")
             self.lief_binary.patch_address(offset, list(data))
 
-        # Save the binary to disk
-        self.lief_binary.write(str(where))
+    def save(self, where: Path) -> None:
+        """
+        Apply any pending operations and save the binary to a file
+
+        :param where: The path to the destination to save the binary
+        """
+        logger.info("Applying pending operations")
+        self.apply()
+
+        logger.info(f"Saving binary to {where}")
+        self.lief_binary.write(str(where.resolve()))
 
     def asm(self, asm: str, vaddr: int) -> bytes:
         """
@@ -457,13 +402,3 @@ class BinaryManager:
                 return instr
 
         raise ValueError(f"Could not find instruction at {vaddr:#0x}")
-
-    def relative_call_addr(self, source: int, dest: int) -> int:
-        """
-        Calculate the relative offset of dest from source
-
-        :param source: The address of the instruction making the call
-        :param dest: The address of the instruction that should be called
-            to
-        """
-        isize = self.disasm(source).size

@@ -32,7 +32,6 @@ def test_compile_squishy() -> None:
         "0xb:\txor eax, eax",
         "0xd:\tpop rbp",
         "0xe:\tret",
-        "0xf:\tnop",
     ]
 
     assert code, "No code generated."
