@@ -4,7 +4,7 @@
 
 ## Documentation
 
-Documentation can be found [here](https://binary-patches.readthedocs.io).
+Documentation can be found [here](https://binary-patches.readthedocs.io/en/latest/).
 
 ## Installation
 
