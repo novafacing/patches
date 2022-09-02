@@ -8,10 +8,5 @@ Documentation can be found [here](https://binary-patches.readthedocs.io).
 
 ## Installation
 
-You can install this package from PyPI by running:
+Up-to-date installation instructions can be found [here](docs/install.md).
 
-```
-python3 -m pip install pypatches
-```
-
-You can also install this package by cloning it and running `poetry install`.

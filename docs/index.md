@@ -1,7 +1,9 @@
 # PyPatches Documentation
 
 
-PyPatches is a library that aims to make binary patching easy!
+PyPatches is a library that aims to make binary patching easy! There are some other
+libraries and tools that try to do the same thing, of course. You can find a list
+[here](other_tools.md).
 
 ## Patch Strategies
 
@@ -22,15 +24,6 @@ PyPatches uses the following libraries and packages, each for their intended pur
 - cle: For loading, segment/section information, symbols
 - angr: For program analysis, identification of branches and functions
 - lief: For ELF parsing and modification
-
-## VS Existing Solutions
-
-- patcherex: This aims to simplify patcherex a bit, but it works well a lot of the time.
-- lief: Provides some patching functionality but nothing super hardcore
-- patchkit: It's not really maintained
-- e9patch: It's in C and only works on x86_64 :(
-- backdoor factory: Only for psexec basically
-- binch: You have to write the asm inline
 
 
 ## Design
