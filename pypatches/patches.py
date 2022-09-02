@@ -9,9 +9,10 @@ data patches)
 """
 
 from dataclasses import InitVar, dataclass, field
-from typing import List, Optional, Set, Union
+from typing import List, Optional, Set, Union, Callable
 from pypatches.code.code import Code
 from pypatches.address_range import AddressRange
+from pypatches.transform.info import TransformInfo
 
 
 @dataclass
@@ -199,11 +200,20 @@ class ReplaceCodePatch(CodePatch):
     """Patch that replaces some code with some other code
 
     Attributes:
-        address: The address to replace the code at, optional
+        address: The address to replace the code at, optional. This "address" can either
+            be a label, an actual address, a list of addresses, a function that takes a
+            [TransformInfo][TransformInfo] and returns an address, or a function that
+            takes a [TransformInfo][TransformInfo] and returns a list of addresses.
 
     """
 
-    address: Optional[int] = None
+    address: Union[
+        str,
+        Callable[[TransformInfo], int],
+        int,
+        List[int],
+        Callable[[TransformInfo], List[int]],
+    ]
 
 
 @dataclass

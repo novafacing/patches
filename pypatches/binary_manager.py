@@ -193,7 +193,13 @@ class BinaryManager:
 
     def write(
         self,
-        where: Union[int, str, Callable[[TransformInfo], int]],
+        where: Union[
+            str,
+            Callable[[TransformInfo], int],
+            int,
+            List[int],
+            Callable[[TransformInfo], List[int]],
+        ],
         data: Union[bytes, Callable[[Dict[str, int]], bytes], Code],
     ) -> None:
         """Write data to the binary at the given virtual address
@@ -347,39 +353,53 @@ class BinaryManager:
         transform_info.angr_project = self.angr_project
 
         for write in self.writes:
+            offsets = []
+
             if isinstance(write.where, str):
-                offset = transform_info.data_offsets.get(
-                    write.where, transform_info.code_offsets.get(write.where, None)
+                offsets.append(
+                    transform_info.data_offsets.get(
+                        write.where, transform_info.code_offsets.get(write.where, None)
+                    )
                 )
-                if offset is None:
-                    raise KeyError(f"Could not find offset for label {write.where}")
 
             elif isinstance(write.where, int):
-                offset = write.where
+                offsets.append(write.where)
 
+            elif isinstance(write.where, list):
+                offsets.extend(write.where)
             else:
-                offset = write.where(transform_info)
+                new_offsets = write.where(transform_info)
 
-            if isinstance(write.data, bytes):
-                data = write.data
+                if not isinstance(offsets, list):
+                    offsets.append(new_offsets)
+                else:
+                    offsets.extend(new_offsets)
 
-            elif isinstance(write.data, Code):
+            for offset in offsets:
+                logger.debug(f"Writing {write.data} to {offset}")
 
-                write.data.reset()
-                write.data.build(transform_info)
-                data = write.data.compile(cast(str, write.data.label), transform_info)
+                if isinstance(write.data, bytes):
+                    data = write.data
 
-                disassembly = self.angr_project.arch.disasm(data, offset)
+                elif isinstance(write.data, Code):
 
-                logger.debug(f"Disassembly of data for label {write.data.label}:")
+                    write.data.reset()
+                    write.data.build(transform_info)
+                    data = write.data.compile(
+                        cast(str, write.data.label), transform_info
+                    )
 
-                for disas_line in disassembly.splitlines():
-                    logger.debug(f"  {disas_line}")
-            else:
-                data = write.data(transform_info.code_offsets)
+                    disassembly = self.angr_project.arch.disasm(data, offset)
 
-            logger.info(f"Writing {len(data)} bytes to {offset:#0x}")
-            self.lief_binary.patch_address(offset, list(data))
+                    logger.debug(f"Disassembly of data for label {write.data.label}:")
+
+                    for disas_line in disassembly.splitlines():
+                        logger.debug(f"  {disas_line}")
+                else:
+                    data = write.data(transform_info.code_offsets)
+
+                logger.info(f"Writing {len(data)} bytes to {offset:#0x}")
+                self.lief_binary.patch_address(offset, list(data))
 
     def save(self, where: Path) -> None:
         """Apply any pending operations and save the binary to a file

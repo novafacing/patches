@@ -7,7 +7,7 @@ all: print_twice.bin cgc
 print_twice.bin: print_twice.c
 	$(CC) -o $@ $(CFLAGS) $^
 
-cgc: AIS-Lite/AIS-Lite Casino_Games/Casino_Games CGC_Image_Parser/CGC_Image_Parser \
+cgc: AIS-Lite/AIS-Lite CGC_Board/CGC_Board CGC_Image_Parser/CGC_Image_Parser \
 	CGC_Video_Format_Parser_and_Viewer/CGC_Video_Format_Parser_and_Viewer \
 	Packet_Analyzer/Packet_Analyzer
 
@@ -18,10 +18,10 @@ AIS-Lite/AIS-Lite:
 		find . -type f -name '*.so' -exec cp '{}' '..' \; ; \
 		cd ..; rm -rf build;
 
-Casino_Games/Casino_Games:
-	cd Casino_Games; mkdir -p build; cd build; \
+CGC_Board/CGC_Board:
+	cd CGC_Board; mkdir -p build; cd build; \
 		cmake -DCMAKE_EXE_LINKER_FLAGS='-no-pie -fno-pie' ..; \
-		make; cp Casino_Games ../Casino_Games.bin; \
+		make; cp CGC_Board ../CGC_Board.bin; \
 		find . -type f -name '*.so' -exec cp '{}' '..' \; ; \
 		cd ..; rm -rf build;
 

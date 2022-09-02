@@ -91,13 +91,13 @@ def build_c_code(
         code = "\n".join(includes)
         code += "\n"
 
-    if extra_code is not None:
-        code += extra_code + "\n"
-
     if helpers is not None:
         for helper in helpers:
             lib_text = get_lib(helper)
             code += f"\n{lib_text}\n"
+
+    if extra_code is not None:
+        code += extra_code + "\n"
 
     code += """int main() {\n"""
     code += main_body + "\n"
