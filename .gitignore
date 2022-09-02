@@ -167,3 +167,5 @@ cython_debug/
 poetry.lock
 setup.py
 core
+*.so
+*.bin
