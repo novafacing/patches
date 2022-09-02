@@ -15,8 +15,9 @@ lief = "^0.12.1"
 rich = "^12.4.4"
 coloredlogs = "^15.0.1"
 keystone-engine = "^0.9.2"
-# pysquishy = "^0.1.12"
-pysquishy = { path = "/home/novafacing/hub/squishy", develop = true }
+pysquishy = "^0.1.17"
+# Uncomment for development and replace path with your squishy path
+# pysquishy = { path = "/home/novafacing/hub/squishy", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.3.0"
