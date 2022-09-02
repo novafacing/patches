@@ -1,5 +1,4 @@
-"""
-Check if two capstone MemOp objects are equal, since they don't
+"""Check if two capstone MemOp objects are equal, since they don't
 have a __eq__ method that works.
 """
 
@@ -19,11 +18,15 @@ from capstone.xcore import XcoreOpMem
 
 
 def cs_memop_eq(first: Structure, second: Structure) -> bool:
-    """
-    Check equality of two memory operands
+    """Check equality of two memory operands
 
-    :param first: The first operand
-    :param second: The second operand
+    Args:
+        first: The first memory operand
+        second: The second memory operand
+
+    Returns:
+        True if the memory operands are equal, False otherwise
+
     """
     # If they aren't the same subclass, they can't possibly be equal
     # in a memory operand sense

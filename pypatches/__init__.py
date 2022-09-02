@@ -1,4 +1,3 @@
-"""
-Patches main module
+"""Patches main module
 """
 from pypatches.log import *

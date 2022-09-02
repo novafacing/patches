@@ -1,5 +1,4 @@
-"""
-Superclass for all code types
+"""Superclass for all code types
 """
 
 from pypatches.transform.info import TransformInfo
@@ -12,8 +11,55 @@ default_post_transformer = lambda t, b: b
 
 
 class Code(ABC):
-    """
-    Superclass for other code types defining required functions
+    """Superclass for other code types defining required functions
+
+    Code objects are used to represent code that can be compiled or assembled into
+    machine code. The code object is used to represent the code in a way that can be
+    modified by the patching process, and then compiled or assembled into machine code
+    for insertion into the binary.
+
+    Generally, each code object goes through the following life cycle:
+    - [dummy][pypatches.code.code.Code.dummy] is called to generate a dummy version of
+        the code that can be used
+        to estimate the size of the code in the binary.
+    - [build][pypatches.code.code.Code.build] is called to generate the final version of
+        the code that will be
+        compiled or assembled.
+    - [compile][pypatches.code.code.Code.compile] is called to compile or assemble the
+        code into machine code
+        bytes.
+    - [post_build][pypatches.code.code.Code.post_build] is called to modify the compiled
+        code after compilation
+        (for example, to add a jump to the end of the code).
+
+    Attributes:
+        code (str): The code to be compiled or assembled
+        original_code (str): The original code, before any modifications
+        dummy_transformer (Callable[[str], str]): A function that takes this container's
+            code and returns a valid compile/assemble-able code (see `self.dummy`)
+        build_transformer (Callable[[TransformInfo, str], str]): A function that takes a
+            `TransformInfo` object and this container's code and returns valid and final
+            compile/assemble-able code.
+        post_transformer (Callable[[TransformInfo, bytes], bytes]): A function that
+            takes
+            a `TransformInfo` object and the result of compiling this container's code
+            to
+            machine code bytes and returns a valid and final machine code byte string.
+
+    Args:
+        code (str): The code, to initialize with
+        dummy_transformer (Callable[[str], str]): A function that takes this container's
+            code and returns a valid compile/assemble-able code (see `self.dummy`),
+            optional. Defaults to a function that returns the code unchanged.
+        build_transformer (Callable[[TransformInfo, str], str]): A function that takes a
+            `TransformInfo` object and this container's code and returns valid and final
+            compile/assemble-able code, optional. Defaults to a function that returns
+            the code unchanged.
+        post_transformer (Callable[[TransformInfo, bytes], bytes]): A function that
+            takes a `TransformInfo` object and the result of compiling this container's
+            code to machine code bytes and returns a valid and final machine code byte
+            string, optional. Defaults to a function that returns the compiled code
+            unchanged.
     """
 
     code: Union[str, bytes]
@@ -31,19 +77,7 @@ class Code(ABC):
         ] = None,
         post_transformer: Optional[Callable[[TransformInfo, bytes], bytes]] = None,
     ) -> None:
-        """
-        Initialize the code object
-
-        :param code: The code, to initialize with
-        :param dummy_transformer: A function that takes this container's code and returns
-            a valid compile/assemble-able code (see `self.dummy`)
-        :param build_transformer: A function that takes a `TransformInfo` object and
-            this container's code and returns valid and final compile/assemble-able
-            code.
-        :param post_transformer: A function that takes a `TransformInfo` object and
-            the result of compiling this container's code to machine code bytes and
-            returns a valid and final machine code byte string.
-        """
+        """Initialize the Code object"""
         self.code = code
         self.original_code = self.code
 
@@ -66,15 +100,12 @@ class Code(ABC):
         )
 
     def reset(self) -> None:
-        """
-        Reset the code to its original state
-        """
+        """Reset the code to its original state without any modifications"""
         self.code = self.original_code
 
     def dummy(self) -> None:
-        """
-        Generate valid dummy code to determine the size required to fit this code in the
-        binary.
+        """Generate valid dummy code to determine the size required to fit this code in
+        the binary.
 
 
         This function will be called to create a dummy result from the code -- the dummy
@@ -100,30 +131,34 @@ class Code(ABC):
 
         The code returned by this function will never be used to produce a binary, only
         to estimate the required size for segment insertion.
-
-        :param dummy_transformer: A function that will be called with `self.code` as a
-            parameter that should return the dummy code.
         """
         self.code = self.dummy_transformer(self.code)
 
     def build(self, info: TransformInfo) -> None:
-        """
-        Build the code into the final version that can be built with the binary context
-        into the final patch.
+        """Build the code into the final version that can be built with the binary
+        context into the final patch.
 
-        :param build_transformer: A function that will be called with `self.code` as a
-            parameter that should return the final code.
+        Args:
+            info: The `TransformInfo` object containing information about the current
+                patching context.
         """
         self.code = self.build_transformer(info, self.code)
 
     def post_build(self, info: TransformInfo) -> bytes:
-        """
-        Modify the built code after compilation
+        """Modify the built code after compilation
+
+        Args:
+            info: The `TransformInfo` object containing information about the current
+                patching context.
+
         """
         return self.post_transformer(info, self.code)
 
     def compile(self, label: str, info: Optional[TransformInfo] = None) -> bytes:
-        """
-        Compile or assemble the code (or do not change it if raw)
+        """Compile or assemble the code (or do not change it if raw)
+
+        Args:
+            label: The label to use for this code
+            info: The `TransformInfo` object to use for this code
         """
         raise NotImplementedError("Subclasses must implement compile()")

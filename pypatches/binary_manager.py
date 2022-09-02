@@ -1,5 +1,4 @@
-"""
-Binary program wrapper
+"""Binary program wrapper providing modification and analysis via LIEF and angr
 """
 
 from dataclasses import dataclass
@@ -19,33 +18,51 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
     Segment,
 )
 from capstone import CsInsn
-from pypatches import transform
 
 from pypatches.error import NoSectionError
 from pypatches.code.code import Code
 from pypatches.transform.info import TransformInfo
+from pypatches.write_operation import WriteOperation
 
 logger = getLogger(__name__)
 
 
-@dataclass
-class WriteOperation:
-    """
-    A write operation to be performed on a section
-
-    :attribute data: Either raw bytes or a function that takes the resolved
-        labels for all patches and returns raw bytes
-
-    :attribute vaddr: The virtual address or label location to write to
-    """
-
-    data: Union[bytes, Callable[[Dict[str, int]], bytes], Code]
-    where: Union[str, int, Callable[[TransformInfo], int]]
-
-
 class BinaryManager:
-    """
-    Wrapper for a binary program to provide information for patching
+    """Wrapper for a binary program to provide information for patching
+
+    Attributes:
+        path: The path to the binary, if it exists on disk
+        blob: The binary blob of the binary
+        lief_binary: The LIEF binary object, which provides the majority of the program
+            information for modification
+        angr_project: The angr project, which provides the CFG and other information
+            for analysis and deep inspection
+        cle_binary: The CLE binary object, which provides angr's loader information
+        cle_opts: The kwargs passed to `cle.Loader`, which can be used to override
+            the default loader options
+        cfg_opts: The kwargs passed to `angr.Project.analyses.CFGFast`, which can be
+            used to override the default CFG options
+        writes: A list of `WriteOperation`s that are queued for application to the
+            binary
+        code_to_add: A dictionary of `Code` objects to add to the binary, keyed by
+            the label they are associated with
+        alignment: The alignment to use when aligning addresses
+        data_to_add: A dictionary of data to add to the binary, keyed by the label
+            the data is associated with
+
+    Args:
+        binary: If `binary` is a `Path` or `str` we will attempt to load it from that
+            path on disk. If it is `bytes`, we will load the bytes as a binary blob.
+        cle_opts: If provided, will override the kwargs passed to `cle.Loader`, defaults
+            to sane options.
+        cfg_opts: If provided, will override the kwargs passed to
+            `angr.Project.analyses.CFGFast`, defaults to sane options.
+        silence_angr_logs: If `True`, will silence angr's logging output, defaults to
+            `False`
+        alignment: The alignment to use when aligning addresses, defaults to 8, but will
+            be overridden by lief's alignment if it discovers a different alignment when
+            loading the binary
+
     """
 
     path: Optional[Path] = None
@@ -77,16 +94,7 @@ class BinaryManager:
         silence_angr_logs: bool = False,
         alignment: int = 8,
     ) -> None:
-        """
-        Initialize the binary wrapper via one of several methods.
-
-        :param binary: If `binary` is a `Path` or `str` we will attempt
-            to load it from that path on disk. If it is `bytes`, we will
-            first try to load it from the decoded path, and if there is
-            no such path, we will try to load it as a binary blob.
-        :param cle_opts: If provided, will override the kwargs passed to
-            `cle.Loader`
-        """
+        """Initialize the binary wrapper via one of several methods."""
         if isinstance(binary, Path):
             self.path = binary
         elif isinstance(binary, str):
@@ -125,9 +133,7 @@ class BinaryManager:
         self.load_angr_project()
 
     def reload_blob_from_lief(self) -> None:
-        """
-        Reload the blob from the current LIEF binary
-        """
+        """Reload the blob from the current LIEF binary"""
         tempfile = NamedTemporaryFile(delete=False)
         temppath = Path(tempfile.name)
 
@@ -144,15 +150,11 @@ class BinaryManager:
         self.load_angr_project()
 
     def load_lief_binary(self) -> None:
-        """
-        Load the binary into LIEF
-        """
+        """Load the binary into LIEF"""
         self.lief_binary = parse(self.blob.getbuffer())
 
     def load_angr_project(self) -> None:
-        """
-        Load the angr project from the binary blob
-        """
+        """Load the angr project from the binary blob"""
         self.angr_project = Project(
             self.blob,
             main_opts={"base_addr": self.lief_binary.imagebase},
@@ -174,9 +176,13 @@ class BinaryManager:
         address: int,
         alignment: Optional[int] = None,
     ) -> int:
-        """
-        Align an address to the specified alignment. If no alignment is
+        """Align an address to the specified alignment. If no alignment is
         provided, the default alignment will be used.
+
+        Args:
+            address: The address to align
+            alignment: The alignment to use, defaults to the default alignment of the
+                binary
         """
         if alignment is None:
             alignment = self.alignment
@@ -190,14 +196,15 @@ class BinaryManager:
         where: Union[int, str, Callable[[TransformInfo], int]],
         data: Union[bytes, Callable[[Dict[str, int]], bytes], Code],
     ) -> None:
-        """
-        Write data to the binary at the given virtual address
+        """Write data to the binary at the given virtual address
 
-        :param where: Either an address or a label that will resolve to an address, or
-            a function that takes the transform info after segment modification and
-            returns an address
-        :param data: The bytes or a function that takes a dictionary of labels
-            and addresses and returns bytes to write to the patch
+        Args:
+
+            where: Either an address or a label that will resolve to an address, or
+                a function that takes the transform info after segment modification and
+                returns an address
+            data: The bytes or a function that takes a dictionary of labels
+                and addresses and returns bytes to write to the patch
         """
 
         operation = WriteOperation(data, where)
@@ -205,8 +212,11 @@ class BinaryManager:
         self.writes.append(operation)
 
     def read(self, vaddr: int, size: int) -> bytes:
-        """
-        Read data from the binary at the given virtual address
+        """Read data from the binary at the given virtual address
+
+        Args:
+            vaddr: The virtual address to read from
+            size: The number of bytes to read
         """
         try:
             section = next(
@@ -220,12 +230,12 @@ class BinaryManager:
         return self.blob.read(size)
 
     def add_code(self, code: Code, label: Optional[str] = None) -> None:
-        """
-        Mark some code as being added on next save
+        """Mark some code as being added on next save
 
-        :param code: The binary code being added
-        :param label: The label to associate with the code for resolution of
-            other patches referencing it
+        Args:
+            code: The binary code being added
+            label: The label to associate with the code for resolution of
+                other patches referencing it
         """
         if label is None:
             label = f"code_{len(self.code_to_add)}"
@@ -237,11 +247,11 @@ class BinaryManager:
         self.code_to_add[label] = code
 
     def add_data(self, data: bytes, label: Optional[str] = None) -> None:
-        """
-        Add some data to the binary
+        """Add some data to the binary
 
-        :param data: The data to add
-        :param label: The label to associate with the data location
+        Args:
+            data: The data to add
+            label: The label to associate with the data location
         """
         if label is None:
             label = f"data_{len(self.data_to_add)}"
@@ -251,9 +261,7 @@ class BinaryManager:
         self.data_to_add[label] = data
 
     def apply(self) -> None:
-        """
-        Apply patches
-        """
+        """Apply patches to the binary"""
         # Offsets is filled in twice:
         # - first time fills in offset in the new section
         # - second time fills in offset from base address
@@ -374,10 +382,10 @@ class BinaryManager:
             self.lief_binary.patch_address(offset, list(data))
 
     def save(self, where: Path) -> None:
-        """
-        Apply any pending operations and save the binary to a file
+        """Apply any pending operations and save the binary to a file
 
-        :param where: The path to the destination to save the binary
+        Args:
+            where: The path to the destination to save the binary
         """
         logger.info("Applying pending operations")
         self.apply()
@@ -386,16 +394,19 @@ class BinaryManager:
         self.lief_binary.write(str(where.resolve()))
 
     def asm(self, asm: str, vaddr: int) -> bytes:
-        """
-        Assemble the given assembly code at the given virtual address
+        """Assemble the given assembly code at the given virtual address
+
+        Args:
+            asm: The assembly code to assemble
+            vaddr: The virtual address to assemble at
         """
         return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)  # type: ignore
 
     def disasm(self, vaddr: int) -> CsInsn:
-        """
-        Disassemble the binary at an address
+        """Disassemble one instruction from the binary at an address
 
-        :param vaddr: The virtual address to disassemble at
+        Args:
+            vaddr: The virtual address to disassemble at
         """
         block = (
             self.binary.angr_project.kb.cfgs["CFGFast"]

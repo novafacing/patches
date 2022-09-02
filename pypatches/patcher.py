@@ -27,8 +27,13 @@ from pypatches.patches import (
 
 
 class Patcher:
-    """
-    Patch processor, actually applies patches to the target binary
+    """Patch processor, applies patches to the target binary
+
+    Args:
+        binary: Either a path to the target binary or the raw bytes
+            of the binary
+        cle_opts: An optional replacement set of options to pass to
+            cle.Loader
     """
 
     def __init__(
@@ -36,19 +41,14 @@ class Patcher:
         binary: Union[Path, str, bytes],
         cle_opts: Optional[Dict[str, bool]] = None,
     ) -> None:
-        """
-        Set up patcher with the target binary
-
-        :param binary: Either a path to the target binary or the raw bytes
-            of the binary
-        :param cle_opts: An optional replacement set of options to pass to
-            cle.Loader
-        """
+        """Set up patcher with the target binary"""
         self.binary = BinaryManager(binary, cle_opts)
 
     def apply(self, patch: PatchType) -> None:
-        """
-        Apply a patch to the target binary
+        """Apply a patch to the target binary
+
+        Args:
+            patch: The patch to apply, can be any of the patch types
         """
 
         def camel_to_snake(name: str) -> str:

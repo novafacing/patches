@@ -4,4 +4,14 @@ theme:
   name: "readthedocs"
 
 plugins:
-  - mkdocstrings
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          setup_commands:
+            - import sys
+            - from unittest.mock import MagicMock as mock
+            - sys.modules["pysquishy"] = mock()
+            - sys.modules["pysquishy.squishy"] = mock()
+            - sys.modules["pysquishy.clang"] = mock()

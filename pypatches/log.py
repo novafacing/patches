@@ -21,9 +21,7 @@ from coloredlogs import ColoredFormatter, install
 
 @dataclass
 class LoggingConfig:
-    """
-    Logging configuration for the project
-    """
+    """Logging configuration for the project"""
 
     default_level: str = "INFO"
     max_name_len: int = 24
