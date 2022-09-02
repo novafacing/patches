@@ -89,10 +89,16 @@ def test_patch_ais_lite(bins) -> None:
 
         locs = []
 
-        for predecessor in cfg.get_all_predecessors(func_node):
+        for predecessor, kind in func_node.predecessors_and_jumpkinds():
+            if kind != "Ijk_Call":
+                continue
+
             pred_block = predecessor.block
+
             if pred_block is not None and pred_block.vex.jumpkind == "Ijk_Call":
                 locs.append(predecessor.block.disassembly.insns[-1].address)
+
+        logger.debug(f"Found call locations: {', '.join(map(hex, locs))}")
 
         return locs
 
