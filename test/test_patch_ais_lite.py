@@ -69,14 +69,6 @@ def test_patch_ais_lite(bins) -> None:
 
     acp = AddCodePatch(code, "cgc_parse_sentence")
 
-    asm_code = ASMCode(
-        """call {cgc_parse_sentence}""",
-        dummy_transformer=lambda c: c.format(cgc_parse_sentence="0"),
-        build_transformer=lambda t, c: c.format(
-            cgc_parse_sentence=t.code_offsets.get("cgc_parse_sentence")
-        ),
-    )
-
     def find_cgc_parse_sentence_call_locations(tinfo: TransformInfo) -> List[int]:
         """
         Find all locations where cgc_parse_sentence is called
@@ -101,6 +93,25 @@ def test_patch_ais_lite(bins) -> None:
         logger.debug(f"Found call locations: {', '.join(map(hex, locs))}")
 
         return locs
+
+    def asm_build_transformer(tinfo: TransformInfo, asm: str) -> str:
+        """
+        Build the asm code at the call location(s)
+        """
+
+        call_offset = tinfo.current_offset
+        logger.debug(f"Building asm code {asm} at {call_offset:#0x}")
+
+        target_offset = tinfo.code_offsets.get("cgc_parse_sentence")
+        logger.debug(f"Target offset: {target_offset:#0x}")
+
+        return asm.format(cgc_parse_sentence=f"{target_offset-call_offset:#0x}")
+
+    asm_code = ASMCode(
+        """call {cgc_parse_sentence}""",
+        dummy_transformer=lambda c: c.format(cgc_parse_sentence="0"),
+        build_transformer=asm_build_transformer,
+    )
 
     rcp = ReplaceCodePatch(asm_code, find_cgc_parse_sentence_call_locations)
 

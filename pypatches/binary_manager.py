@@ -376,7 +376,8 @@ class BinaryManager:
                     offsets.extend(new_offsets)
 
             for offset in offsets:
-                logger.debug(f"Writing {write.data} to {offset}")
+                logger.debug(f"Writing {write.data} to {offset:#0x}")
+                transform_info.current_offset = offset
 
                 if isinstance(write.data, bytes):
                     data = write.data

@@ -20,6 +20,10 @@ class TransformInfo:
         data_base: The base address of the data in the binary
         data_size: The size of the data in the binary
         data_offsets: A dictionary mapping labels to offsets in the binary
+        current_offset: The offset of the current operation, usually a write
+            to the binay. For example, a replacecodepatch will have at least one
+            write, so this value will be set to the offset of the write before
+            passing the [TransformInfo][TransformInfo] object to the build transformer
     """
 
     lief_binary: LIEFBinary
@@ -32,3 +36,4 @@ class TransformInfo:
     data_size: int = 0
     data_offsets: Dict[str, int] = field(default_factory=dict)
     all_data: bytes = b""
+    current_offset: int = 0
