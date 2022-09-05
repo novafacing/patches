@@ -1,3 +1,6 @@
 [submodule "third_party/shellvm"]
 	path = third_party/shellvm
 	url = https://github.com/novafacing/shellvm.git
+[submodule "test/patches-tests"]
+	path = test/patches-tests
+	url = https://github.com/novafacing/patches-tests
