@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pypatches"
-version = "0.1.8"
+version = "0.1.9"
 description = "Binary patching framework"
 authors = ["novafacing <rowanbhart@gmail.com>"]
 license = "MIT"

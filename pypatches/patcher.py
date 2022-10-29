@@ -39,11 +39,12 @@ class Patcher:
     def __init__(
         self,
         binary: Union[Path, str, bytes],
+        use_angr: bool = True,
         cle_opts: Optional[Dict[str, bool]] = None,
         cfg_opts: Optional[Dict[str, bool]] = None,
     ) -> None:
         """Set up patcher with the target binary"""
-        self.binary = BinaryManager(binary, cle_opts, cfg_opts)
+        self.binary = BinaryManager(binary, use_angr, cle_opts, cfg_opts)
 
     def apply(self, patch: PatchType) -> None:
         """Apply a patch to the target binary
