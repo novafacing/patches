@@ -19,6 +19,9 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
 )
 from capstone import CsInsn
 
+# from capstone import Cs, CS_ARCH_X86, CS_MODE_64
+from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+
 from pypatches.error import NoSectionError
 from pypatches.code.code import Code
 from pypatches.transform.info import TransformInfo
@@ -89,12 +92,16 @@ class BinaryManager:
     def __init__(
         self,
         binary: Union[Path, str, bytes],
+        use_angr: bool = True,
         cle_opts: Optional[Dict[str, bool]] = None,
         cfg_opts: Optional[Dict[str, bool]] = None,
         silence_angr_logs: bool = False,
         alignment: int = 8,
     ) -> None:
         """Initialize the binary wrapper via one of several methods."""
+
+        self.use_angr = use_angr
+
         if isinstance(binary, Path):
             self.path = binary
         elif isinstance(binary, str):
@@ -130,6 +137,7 @@ class BinaryManager:
             self.blob = BytesIO(self.path.read_bytes())
 
         self.load_lief_binary()
+
         self.load_angr_project()
 
     def reload_blob_from_lief(self) -> None:
@@ -147,6 +155,7 @@ class BinaryManager:
             temppath.unlink(missing_ok=True)
 
         self.load_lief_binary()
+
         self.load_angr_project()
 
     def load_lief_binary(self) -> None:
@@ -155,11 +164,18 @@ class BinaryManager:
 
     def load_angr_project(self) -> None:
         """Load the angr project from the binary blob"""
-        self.angr_project = Project(
-            self.blob,
-            main_opts={"base_addr": self.lief_binary.imagebase},
-            load_options=self.cle_opts,
-        )
+
+        if not self.use_angr:
+            self.angr_project = None
+            self.cle_binary = None
+            return
+
+        if self.proj_opts is None:
+            self.proj_opts = {
+                "main_opts": {"base_addr": self.lief_binary.imagebase},
+                "load_options": self.cle_opts,
+            }
+        self.angr_project = Project(self.blob, **self.proj_opts)
         self.angr_project.analyses.CFGFast(  # type: ignore
             **self.cfg_opts,
         )
@@ -225,14 +241,18 @@ class BinaryManager:
             size: The number of bytes to read
         """
         try:
-            section = next(
-                filter(lambda s: s.contains_addr(vaddr), self.cle_binary.sections)
-            )
+            if self.use_angr:
+                offset = next(
+                    filter(lambda s: s.contains_addr(vaddr), self.cle_binary.sections)
+                ).addr_to_offset(vaddr)
+            else:
+                offset = self.lief_binary.virtual_address_to_offset(vaddr)
+
         except StopIteration as e:
             logger.error(f"Could not find section for address {vaddr}")
             raise NoSectionError(f"Could not find section for address {vaddr}") from e
 
-        self.blob.seek(section.addr_to_offset(vaddr))
+        self.blob.seek(offset)
         return self.blob.read(size)
 
     def add_code(self, code: Code, label: Optional[str] = None) -> None:
@@ -421,7 +441,11 @@ class BinaryManager:
             asm: The assembly code to assemble
             vaddr: The virtual address to assemble at
         """
-        return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)  # type: ignore
+        if self.use_angr:
+            return self.cle_binary.arch.asm(asm, vaddr, as_bytes=True)  # type: ignore
+        else:
+            assembler = Ks(KS_ARCH_X86, KS_MODE_64)
+            return assembler.asm(asm, vaddr, as_bytes=True)  # type: ignore
 
     def disasm(self, vaddr: int) -> CsInsn:
         """Disassemble one instruction from the binary at an address
@@ -429,14 +453,18 @@ class BinaryManager:
         Args:
             vaddr: The virtual address to disassemble at
         """
-        block = (
-            self.binary.angr_project.kb.cfgs["CFGFast"]
-            .get_any_node(vaddr, anyaddr=True)
-            .block
-        )
 
-        for instr in block.capstone.insns:
-            if instr.address == vaddr:
-                return instr
+        if self.use_angr:
+            block = (
+                self.binary.angr_project.kb.cfgs["CFGFast"]
+                .get_any_node(vaddr, anyaddr=True)
+                .block
+            )
 
-        raise ValueError(f"Could not find instruction at {vaddr:#0x}")
+            for instr in block.capstone.insns:
+                if instr.address == vaddr:
+                    return instr
+
+            raise ValueError(f"Could not find instruction at {vaddr:#0x}")
+        else:
+            logger.warning("Disassembly is not supported without angr")

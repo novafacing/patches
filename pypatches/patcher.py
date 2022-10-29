@@ -83,17 +83,21 @@ class Patcher:
         """
         Apply a nop patch to the target binary
         """
-        nop_len = len(cast(Arch, self.binary.cle_binary.arch).nop_instruction)
+        if self.binary.use_angr:
+            nop_len = len(cast(Arch, self.binary.cle_binary.arch).nop_instruction)
 
-        for address_range in patch.address_ranges:
-            for address in range(
-                address_range.start,
-                max(address_range.end, address_range.start + nop_len),
-                nop_len,
-            ):
-                self.binary.write(
-                    address, cast(Arch, self.binary.cle_binary.arch).nop_instruction
-                )
+            for address_range in patch.address_ranges:
+                for address in range(
+                    address_range.start,
+                    max(address_range.end, address_range.start + nop_len),
+                    nop_len,
+                ):
+                    self.binary.write(
+                        address, cast(Arch, self.binary.cle_binary.arch).nop_instruction
+                    )
+        else:
+            for address_range in patch.address_ranges:
+                self.binary.write(address_range.start, b"\x90" * address_range.length)
 
     def apply_invert_branch_patch(self, patch: InvertBranchPatch) -> None:
         """

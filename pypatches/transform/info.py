@@ -2,7 +2,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 from lief import Binary as LIEFBinary  # pylint: disable=no-name-in-module
 from angr import Project
 
@@ -27,7 +27,7 @@ class TransformInfo:
     """
 
     lief_binary: LIEFBinary
-    angr_project: Project
+    angr_project: Optional[Project]
 
     code_base: int = 0
     code_size: int = 0
