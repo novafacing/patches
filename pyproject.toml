@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pypatches"
-version = "0.1.16"
+version = "0.1.19"
 description = "Binary patching framework"
 authors = ["novafacing <rowanbhart@gmail.com>"]
 license = "MIT"
@@ -15,7 +15,7 @@ lief = "^0.12.1"
 rich = "^12.4.4"
 coloredlogs = "^15.0.1"
 keystone-engine = "^0.9.2"
-pysquishy = "0.1.20"
+pysquishy = "0.1.21"
 # Uncomment for development and replace path with your squishy path
 # pysquishy = { path = "/home/novafacing/hub/squishy", develop = true }
 

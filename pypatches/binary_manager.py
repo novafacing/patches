@@ -415,9 +415,10 @@ class BinaryManager:
                     else:
                         logger.debug(f"Disassembly for {data} @ {offset}")
                         disassembler = Cs(CS_ARCH_X86, CS_MODE_64)
+                        disassembler.detail = True
                         disassembly = "\n".join(
                             map(
-                                lambda i: f"{i.addr:#x}: {i.mnemonic} {i.op_str}",
+                                lambda i: f"{i.address:#x}: {i.mnemonic} {i.op_str}",
                                 disassembler.disasm(data, offset),
                             )
                         )
