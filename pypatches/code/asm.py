@@ -5,6 +5,8 @@ from typing import Optional, cast
 from pypatches.code.code import Code
 from pypatches.transform.info import TransformInfo
 
+from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+
 
 class ASMCode(Code):
     """Assembly code container for patching
@@ -28,8 +30,9 @@ class ASMCode(Code):
         assert info is not None, "Must provide info for ASM compile"
 
         vaddr = info.code_offsets.get(label, 0)
+        assembler = Ks(KS_ARCH_X86, KS_MODE_64)
 
         return cast(
             bytes,
-            info.angr_project.arch.asm(self.code, vaddr, as_bytes=True),
+            assembler.asm(self.code, vaddr, as_bytes=True)[0],
         )

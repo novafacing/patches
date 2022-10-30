@@ -17,7 +17,7 @@ from lief.ELF import (  # pylint: disable=no-name-in-module,import-error
     SEGMENT_TYPES,
     Segment,
 )
-from capstone import CsInsn
+from capstone import CsInsn, Cs, CS_ARCH_X86, CS_MODE_64
 
 # from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 from keystone import Ks, KS_ARCH_X86, KS_MODE_64
@@ -410,7 +410,17 @@ class BinaryManager:
                         cast(str, write.data.label), transform_info
                     )
 
-                    disassembly = self.angr_project.arch.disasm(data, offset)
+                    if self.use_angr:
+                        disassembly = self.angr_project.arch.disasm(data, offset)
+                    else:
+                        logger.debug(f"Disassembly for {data} @ {offset}")
+                        disassembler = Cs(CS_ARCH_X86, CS_MODE_64)
+                        disassembly = "\n".join(
+                            map(
+                                lambda i: f"{i.addr:#x}: {i.mnemonic} {i.op_str}",
+                                disassembler.disasm(data, offset),
+                            )
+                        )
 
                     logger.debug(f"Disassembly of data for label {write.data.label}:")
 
